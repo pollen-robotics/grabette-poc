@@ -1,10 +1,16 @@
-"""Grove LED Button controller using gpiod v2.
+"""LED + button (switch) controller using gpiod v2.
 
-Ported from grabette-capture/grabette_capture/button.py.
+V1 hardware (Grove HAT, legacy): Grove LED Button on D22 connector
+    - GPIO22 = LED (active HIGH)
+    - GPIO23 = Button (active LOW with internal pull-up)
 
-Hardware: Grove LED Button on D22 connector
-- GPIO22 = SIG1 = LED control (active HIGH)
-- GPIO23 = SIG2 = Button input (active LOW with internal pull-up)
+V2 hardware (custom HAT, rgbd branch):
+    - GPIO11 = LED (active LOW — wire LOW lights the LED)
+    - GPIO10 = Switch (active LOW with internal pull-up)
+
+The LED polarity differs between V1 and V2. We pass `active_low=True` to
+gpiod for V2 so the API stays the same (`led_on()` lights the LED on both
+boards). Defaults below match V2.
 """
 
 from __future__ import annotations
@@ -18,15 +24,18 @@ from gpiod.line import Bias, Direction, Value
 
 
 class LedButton:
-    """Grove LED Button controller using gpiod v2."""
+    """LED + button/switch controller using gpiod v2."""
 
-    LED_PIN = 22
-    BUTTON_PIN = 23
+    LED_PIN = 11
+    BUTTON_PIN = 10
     # Pi 4 and earlier use gpiochip0, Pi 5 uses gpiochip4
     CHIP_PATHS = ["/dev/gpiochip0", "/dev/gpiochip4"]
 
     def __init__(
-        self, led_pin: int = LED_PIN, button_pin: int = BUTTON_PIN,
+        self,
+        led_pin: int = LED_PIN,
+        button_pin: int = BUTTON_PIN,
+        led_active_low: bool = True,  # V2 wiring; set False for V1 Grove HAT
     ) -> None:
         self._led_pin = led_pin
         self._button_pin = button_pin
@@ -36,7 +45,10 @@ class LedButton:
         self._led_request = gpiod.request_lines(
             chip_path,
             consumer="grabette-led",
-            config={led_pin: gpiod.LineSettings(direction=Direction.OUTPUT)},
+            config={led_pin: gpiod.LineSettings(
+                direction=Direction.OUTPUT,
+                active_low=led_active_low,
+            )},
         )
         self._button_request = gpiod.request_lines(
             chip_path,

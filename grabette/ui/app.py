@@ -77,6 +77,31 @@ PAGE_JS = """
 }
 """
 
+_IMU_IFRAME_HTML = (
+    '<iframe src="/charts/imu" '
+    'style="width:100%;height:38vh;border:none;'
+    'border-radius:8px;background:transparent;"></iframe>'
+)
+_ANGLE_IFRAME_HTML = (
+    '<iframe src="/charts/angle" '
+    'style="width:100%;height:18vh;border:none;'
+    'border-radius:8px;background:transparent;"></iframe>'
+)
+# Replacement HTML used while teleop is active. gr.update(value="") doesn't
+# seem to force a DOM swap (Gradio may treat empty as no-op), so we use an
+# explicit non-empty placeholder. Same height as the real iframes to avoid
+# layout shift; src=about:blank guarantees no /api/state/history polling.
+_IMU_IFRAME_PAUSED = (
+    '<iframe src="about:blank" '
+    'style="width:100%;height:38vh;border:none;'
+    'border-radius:8px;background:#1a1a1a;"></iframe>'
+)
+_ANGLE_IFRAME_PAUSED = (
+    '<iframe src="about:blank" '
+    'style="width:100%;height:18vh;border:none;'
+    'border-radius:8px;background:#1a1a1a;"></iframe>'
+)
+
 
 def create_ui(api_url: str | None = None) -> gr.Blocks:
     client = GrabetteClient(base_url=api_url)
@@ -85,6 +110,15 @@ def create_ui(api_url: str | None = None) -> gr.Blocks:
 
     def get_camera_frame():
         data = client.get_snapshot()
+        if data is None:
+            return None
+        try:
+            return Image.open(io.BytesIO(data))
+        except Exception:
+            return None
+
+    def get_depth_frame():
+        data = client.get_depth_snapshot()
         if data is None:
             return None
         try:
@@ -104,19 +138,17 @@ def create_ui(api_url: str | None = None) -> gr.Blocks:
             a = imu["accel"]
             g = imu["gyro"]
             imu_text = (
-                f"## IMU Live\n"
                 f"`Accel: [{a[0]:+8.3f}, {a[1]:+8.3f}, {a[2]:+8.3f}] m/s²`\n\n"
                 f"`Gyro:  [{g[0]:+8.4f}, {g[1]:+8.4f}, {g[2]:+8.4f}] rad/s`"
             )
         else:
-            imu_text = "## IMU Live\n*No IMU data*"
+            imu_text = "*No IMU data*"
 
         angle = state.get("angle")
         if angle:
             p_deg = math.degrees(angle["proximal"])
             d_deg = math.degrees(angle["distal"])
             angle_text = (
-                f"## Angle Sensors\n"
                 f"`Proximal: {p_deg:+7.2f}°  ({angle['proximal']:+.4f} rad)`\n\n"
                 f"`Distal:   {d_deg:+7.2f}°  ({angle['distal']:+.4f} rad)`"
             )
@@ -153,6 +185,115 @@ def create_ui(api_url: str | None = None) -> gr.Blocks:
         else:
             client.start_capture(session_id=session_id or None)
             return gr.update(value="Stop Capture", variant="stop"), gr.update(), gr.update()
+
+    def get_teleop_display():
+        """Polled on a slow (~1 Hz) timer, separately from get_sensor_state.
+
+        Returns the teleop_msg text. When teleop is off, the textbox is
+        cleared so it doesn't visually compete with the capture box.
+        Doing this on the main state_timer caused HTTP backpressure that
+        made the IMU / Angle markdown flicker and bursted the WS stream.
+        """
+        tstatus = client.get_teleop_status() or {}
+        if not tstatus.get("active"):
+            return ""
+        sending = "YES" if tstatus.get("sending") else "no"
+        stats = tstatus.get("stats", {}) or {}
+        hz = stats.get("mean_hz", 0)
+        n = stats.get("n_poses", 0)
+        return f"● TELEOP ON   sending: {sending}   VIO: {hz:.1f} Hz   {n} poses"
+
+    def _oakd_button_update():
+        """Compute the OAK-D toggle button's appearance from current state."""
+        s = client.get_oakd_status() or {}
+        if not s.get("supported"):
+            return gr.update(
+                value="OAK-D not available",
+                variant="secondary",
+                interactive=False,
+            )
+        enabled = bool(s.get("enabled"))
+        # Greyed out while capture or teleop holds the OAK — toggling is
+        # refused server-side anyway, but the visual cue prevents user
+        # confusion.
+        state = client.get_state() or {}
+        capturing = bool(state.get("capture", {}).get("is_capturing"))
+        tstatus = client.get_teleop_status() or {}
+        teleop = bool(tstatus.get("active"))
+        busy = capturing or teleop
+        if enabled:
+            label = "OAK-D: ON" + ("  (busy)" if busy else "  — click to disable")
+            variant = "primary"
+        else:
+            label = "OAK-D: OFF" + ("  (busy)" if busy else "  — click to enable")
+            variant = "secondary"
+        return gr.update(value=label, variant=variant, interactive=not busy)
+
+    def on_toggle_oakd():
+        s = client.get_oakd_status() or {}
+        enabled = bool(s.get("enabled"))
+        result = client.set_oakd(not enabled)
+        if "error" in result:
+            logger.warning("OAK-D toggle failed: %s", result["error"])
+        return _oakd_button_update()
+
+    def poll_oakd():
+        return _oakd_button_update()
+
+    def on_toggle_teleop():
+        """Single-button toggle: enter teleop mode if off, exit if on.
+
+        Entering teleop pauses ALL UI live-view sources so uvicorn's event
+        loop is free for /api/teleop/stream:
+          - Gradio Timers (camera, depth, sensor, teleop) → interval set to
+            a huge value (Gradio's active=False propagation is unreliable for
+            gr.Timer at runtime; bumping the interval is a deterministic kill)
+          - IMU/angle chart iframes → swapped to about:blank placeholders
+            so their JS stops polling /api/state/history
+
+        Returns: (teleop_msg, teleop_btn, camera_timer, depth_timer,
+        sensor_timer, teleop_timer, imu_iframe, angle_iframe).
+        """
+        status = client.get_teleop_status() or {}
+        active = bool(status.get("active"))
+        daemon = client.get_daemon_status() or {}
+        if daemon.get("backend") != "RpiBackend":
+            return ("Teleop not available (mock backend)",
+                    gr.update(value="Enter Teleop Mode", variant="secondary", interactive=False),
+                    gr.update(), gr.update(), gr.update(), gr.update(),
+                    gr.update(), gr.update())
+        if active:
+            result = client.stop_teleop()
+            if "error" in result:
+                return (f"Stop error: {result['error']}",
+                        gr.update(value="Exit Teleop Mode", variant="stop"),
+                        gr.update(), gr.update(), gr.update(), gr.update(),
+                        gr.update(), gr.update())
+            # Exiting teleop — resume live-view timers and restore iframes.
+            return ("Teleop OFF",
+                    gr.update(value="Enter Teleop Mode", variant="secondary"),
+                    gr.update(value=0.2),    # camera_timer
+                    gr.update(value=0.2),    # depth_timer
+                    gr.update(value=0.5),    # sensor_timer
+                    gr.update(value=1.0),    # teleop_timer
+                    gr.update(value=_IMU_IFRAME_HTML),
+                    gr.update(value=_ANGLE_IFRAME_HTML))
+        else:
+            result = client.start_teleop()
+            if "error" in result:
+                return (f"Start error: {result['error']}",
+                        gr.update(value="Enter Teleop Mode", variant="secondary"),
+                        gr.update(), gr.update(), gr.update(), gr.update(),
+                        gr.update(), gr.update())
+            # Entering teleop — disable ALL live-view timers via huge intervals.
+            return ("Teleop ON (press button to send deltas)",
+                    gr.update(value="Exit Teleop Mode", variant="stop"),
+                    gr.update(value=86400),  # camera_timer
+                    gr.update(value=86400),  # depth_timer
+                    gr.update(value=86400),  # sensor_timer
+                    gr.update(value=86400),  # teleop_timer
+                    gr.update(value=_IMU_IFRAME_PAUSED),
+                    gr.update(value=_ANGLE_IFRAME_PAUSED))
 
     # ── Task (Session) helpers ────────────────────────────────────────
 
@@ -300,6 +441,35 @@ def create_ui(api_url: str | None = None) -> gr.Blocks:
             return f"Error: {result['error']}", gr.update(), gr.update()
         rows, move_dd, *_ = _refresh_episode_table(current_session_id)
         return f"Moved {len(episode_ids)} episode(s)", rows, move_dd
+
+    # ── SLAM ──────────────────────────────────────────────────────────
+
+    def on_slam_run(table_data, repo_id: str):
+        episode_ids = _get_selected_ids(table_data)
+        episode_id = episode_ids[0] if episode_ids else None
+        if not episode_id:
+            return "Select an episode first"
+        if not repo_id:
+            return "Enter a HuggingFace repo ID first"
+        result = client.slam_run(episode_id, repo_id)
+        if "error" in result:
+            return f"Error: {result['error']}"
+        return f"SLAM started (job: {result.get('job_id', '?')})"
+
+    def get_slam_status():
+        jobs = client.hf_list_jobs()
+        slam_jobs = [j for j in jobs if j.get("name", "").startswith("slam:")]
+        if not slam_jobs:
+            return "No SLAM jobs"
+        latest = slam_jobs[-1]
+        status = latest["status"]
+        if status == "completed":
+            return f"Complete: {latest.get('result', '')}"
+        if status == "failed":
+            return f"Failed: {latest.get('error', '')}"
+        if status == "running":
+            return f"Running ({latest.get('progress', 0):.0f}%): {latest.get('message', '')}"
+        return f"Pending: {latest.get('message', '')}"
 
     # ── Replay ────────────────────────────────────────────────────────
 
@@ -479,7 +649,7 @@ def create_ui(api_url: str | None = None) -> gr.Blocks:
         return "Not authenticated"
 
     # ══════════════════════════════════════════════════════════════════
-    # Page 1 — Datasets
+    # Page 1 — Episodes
     # ══════════════════════════════════════════════════════════════════
 
     with gr.Blocks(title="Grabette", css=MODAL_CSS, js=PAGE_JS) as demo:
@@ -790,6 +960,13 @@ def create_ui(api_url: str | None = None) -> gr.Blocks:
                 camera_img = gr.Image(
                     label=None, show_label=False, height="30vh", container=False,
                 )
+                gr.HTML("<div style='font-size:0.72rem;text-transform:uppercase;"
+                        "letter-spacing:0.09em;color:#94a3b8;margin:0.5rem 0 0.3rem;'>"
+                        "Depth (OAK-D)</div>")
+                depth_img = gr.Image(
+                    label=None, show_label=False, height="25vh", container=False,
+                )
+                oakd_btn = gr.Button("OAK-D: OFF  — click to enable", size="sm")
             with gr.Column(scale=2):
                 gr.HTML("<div style='font-size:0.72rem;text-transform:uppercase;"
                         "letter-spacing:0.09em;color:#94a3b8;margin-bottom:0.3rem;'>"
@@ -804,30 +981,53 @@ def create_ui(api_url: str | None = None) -> gr.Blocks:
                         "letter-spacing:0.09em;color:#94a3b8;margin-bottom:0.3rem;'>"
                         "System</div>")
                 dv_system_bar = gr.HTML()
+                teleop_btn = gr.Button("Enter Teleop Mode", variant="secondary")
+                teleop_msg = gr.Textbox(
+                    show_label=False, interactive=False, max_lines=1,
+                )
 
         # ── Sensor charts ─────────────────────────────────────────────
         gr.HTML("<hr style='margin:1.25rem 0;border:none;border-top:1px solid #1e293b;'>")
         with gr.Row():
             with gr.Column(scale=3):
                 imu_box = gr.Markdown("## IMU Live")
-                gr.HTML(
-                    '<iframe src="/charts/imu" '
-                    'style="width:100%;height:38vh;border:none;'
-                    'border-radius:8px;background:transparent;"></iframe>'
-                )
+                imu_iframe = gr.HTML(value=_IMU_IFRAME_HTML)
             with gr.Column(scale=2):
                 angle_box = gr.Markdown("## Angle Sensors")
-                gr.HTML(
-                    '<iframe src="/charts/angle" '
-                    'style="width:100%;height:18vh;border:none;'
-                    'border-radius:8px;background:transparent;"></iframe>'
-                )
+                angle_iframe = gr.HTML(value=_ANGLE_IFRAME_HTML)
 
         camera_timer = gr.Timer(0.2)
         camera_timer.tick(fn=get_camera_frame, outputs=camera_img)
 
+        depth_timer = gr.Timer(0.2)
+        depth_timer.tick(fn=get_depth_frame, outputs=depth_img)
+
         sensor_timer = gr.Timer(0.5)
         sensor_timer.tick(fn=get_sensor_state, outputs=[imu_box, angle_box])
+
+        # Teleop status polled at 1 Hz on its own timer — kept off the
+        # main sensor_timer to avoid HTTP backpressure that caused Markdown
+        # flicker and WS-stream bursting in earlier revisions.
+        teleop_timer = gr.Timer(1.0)
+        teleop_timer.tick(fn=get_teleop_display, outputs=teleop_msg)
+
+        # OAK-D toggle — slow poll (3 s) since the user is the only thing
+        # that flips it, except for the auto-on-at-record path which also
+        # only needs O(seconds) responsiveness.
+        oakd_timer = gr.Timer(3.0)
+        oakd_timer.tick(fn=poll_oakd, outputs=oakd_btn)
+        oakd_btn.click(fn=on_toggle_oakd, outputs=oakd_btn)
+        live_demo.load(fn=poll_oakd, outputs=oakd_btn)
+
+        # Teleop mode toggle (wired here so the timer references resolve).
+        # When teleop is ON: the live-view timers are paused so uvicorn
+        # has headroom for the WS stream.
+        teleop_btn.click(
+            fn=on_toggle_teleop,
+            outputs=[teleop_msg, teleop_btn,
+                     camera_timer, depth_timer, sensor_timer, teleop_timer,
+                     imu_iframe, angle_iframe],
+        )
 
         dv_system_timer = gr.Timer(10)
         dv_system_timer.tick(fn=get_system_bar, outputs=dv_system_bar)
