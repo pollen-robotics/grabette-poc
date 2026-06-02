@@ -1,6 +1,9 @@
-"""Angle sensor capture using AS5600 magnetic rotary position sensors over I2C.
+"""Angle sensor capture using AS5600L magnetic rotary position sensors over I2C.
 
-Ported from grabette-capture/grabette_capture/angle.py.
+V1 hardware used AS5600 (fixed address 0x36); V2 HAT uses AS5600L which has
+the same register layout but defaults to address 0x40 and supports user-
+programmable addresses (so multiple sensors can share one I2C bus). For now
+we keep one sensor per bus and use the default 0x40.
 """
 
 import json
@@ -25,20 +28,33 @@ class AngleSamples:
 
 
 class AngleCapture:
-    """Captures angle data from two AS5600 magnetic rotary position sensors.
+    """Captures angle data from two AS5600L magnetic rotary position sensors.
 
-    Each AS5600 is on a separate I2C bus (they have the same fixed address 0x36).
+    Each AS5600L is on a separate I2C bus (both at default address 0x40).
+
+    V2 hardware (rgbd branch): hardware I2C peripherals on the BCM2711.
+        - Bus 1 (distal):   /dev/i2c-3 (GPIO 4/5),  dtoverlay=i2c3,pins_4_5
+        - Bus 2 (proximal): /dev/i2c-4 (GPIO 8/9),  dtoverlay=i2c4,pins_8_9
+
+    Register layout matches the original AS5600 (RAW ANGLE at 0x0C-0x0D,
+    ANGLE at 0x0E-0x0F).
     """
 
     DEFAULT_SAMPLE_RATE_HZ = 100
-    AS5600_ADDRESS = 0x36
+    AS5600_ADDRESS = 0x40  # AS5600L default; AS5600 (non-L) was 0x36
     ANGLE_REGISTER = 0x0C
+    # V2 mechanical: the distal sensor is mounted such that the magnet rotates
+    # opposite to the proximal one. Applied to cal1 (bus 3 = distal) after
+    # offset+normalize so user-calibrated offsets stay valid under the new
+    # mounting (recalibrate after changing this).
+    DISTAL_SIGN = -1
+    PROXIMAL_SIGN = 1
 
     def __init__(
         self,
         sync_manager: SyncManager,
-        i2c_bus_1: int = 4,
-        i2c_bus_2: int = 5,
+        i2c_bus_1: int = 3,
+        i2c_bus_2: int = 4,
         sample_rate_hz: int = DEFAULT_SAMPLE_RATE_HZ,
     ):
         self.sync = sync_manager
@@ -104,8 +120,8 @@ class AngleCapture:
                 ts = self.sync.get_timestamp_ms()
                 raw1 = self._read_angle_raw(self._i2c_1)
                 raw2 = self._read_angle_raw(self._i2c_2)
-                cal1 = self._normalize_angle(raw1 - self._offset_1_deg)
-                cal2 = self._normalize_angle(raw2 - self._offset_2_deg)
+                cal1 = self._normalize_angle(raw1 - self._offset_1_deg) * self.DISTAL_SIGN
+                cal2 = self._normalize_angle(raw2 - self._offset_2_deg) * self.PROXIMAL_SIGN
 
                 self._samples.samples.append({
                     "cts": ts,

@@ -13,15 +13,19 @@ Usage:
 
 import argparse
 import json
+import sys
 import time
 from datetime import datetime
 from pathlib import Path
 
-CALIBRATION_FILE = Path.home() / ".grabette" / "angle_calibration.json"
-AS5600_ADDRESS = 0x36
-ANGLE_REGISTER = 0x0C
-I2C_BUS_1 = 4  # sensor 1 (distal)
-I2C_BUS_2 = 5  # sensor 2 (proximal)
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from grabette.hardware.angle import AngleCapture, CALIBRATION_FILE
+
+AS5600_ADDRESS = AngleCapture.AS5600_ADDRESS
+ANGLE_REGISTER = AngleCapture.ANGLE_REGISTER
+I2C_BUS_1 = 3  # sensor 1 (distal,   V2 = /dev/i2c-3)
+I2C_BUS_2 = 4  # sensor 2 (proximal, V2 = /dev/i2c-4)
 NUM_SAMPLES = 20  # average over N reads for stability
 
 
