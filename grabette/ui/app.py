@@ -944,10 +944,10 @@ def create_ui(api_url: str | None = None) -> gr.Blocks:
         datasets_demo.load(fn=check_hf_auth_on_load, outputs=ds_auth_modal)
 
     # ══════════════════════════════════════════════════════════════════
-    # Page 3 — Data View
+    # Page 3 — Live View
     # ══════════════════════════════════════════════════════════════════
 
-    with demo.route("Data View") as live_demo:
+    with demo.route("Live View") as live_demo:
         gr.Navbar(main_page_name="Episodes")
         gr.Markdown("# GRABETTE")
 
