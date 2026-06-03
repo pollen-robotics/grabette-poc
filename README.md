@@ -97,6 +97,8 @@ make install-systemd
 journalctl -u grabette -f   # logs
 ```
 
+`make install-systemd` also installs a **polkit rule** (`/etc/polkit-1/rules.d/10-grabette-network.rules`) that allows the `rasp` service user to manage NetworkManager (connect to WiFi, scan) without root. This is required for the WiFi setup web page to work.
+
 ### Bluetooth WiFi configuration
 
 A standalone BLE GATT service allows configuring WiFi credentials without SSH or a screen. Connect from a phone or laptop via Bluetooth Low Energy, authenticate with a PIN, and send WiFi credentials.

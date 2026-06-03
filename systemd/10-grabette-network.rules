@@ -1,0 +1,8 @@
+// Polkit rule — allows the grabette service user (rasp) to manage NetworkManager
+// without root privileges. Required for wifi connect/scan from the web API.
+polkit.addRule(function(action, subject) {
+    if (action.id.indexOf("org.freedesktop.NetworkManager") === 0 &&
+        subject.user === "rasp") {
+        return polkit.Result.YES;
+    }
+});
