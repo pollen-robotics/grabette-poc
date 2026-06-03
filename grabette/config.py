@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pydantic import computed_field
 from pydantic_settings import BaseSettings
 
 
@@ -52,10 +51,9 @@ class Settings(BaseSettings):
     # Set via GRABETTE_ROBOT_ID=2 in /etc/grabette.env
     robot_id: int = 1
 
-    # Hotspot SSID — auto-derived as "grabette-{robot_id}" (open network, no password)
-    @computed_field
     @property
     def hotspot_ssid(self) -> str:
+        """Hotspot SSID, auto-derived as 'grabette-{robot_id}'. Set GRABETTE_ROBOT_ID to change."""
         return f"grabette-{self.robot_id}"
 
     # File written by the BLE service (root) and read by the API (rasp user)
