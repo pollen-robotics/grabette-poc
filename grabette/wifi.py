@@ -117,17 +117,18 @@ def deactivate_hotspot() -> bool:
 # ---------------------------------------------------------------------------
 
 def scan_networks() -> list[dict]:
-    """Return visible WiFi networks sorted by signal, excluding the grabette hotspot.
+    """Return visible WiFi networks sorted by signal, excluding the current connection.
 
-    When wlan0 is in AP (hotspot) mode, ``nmcli --rescan yes`` cannot scan because
-    the interface is busy. We instead trigger a background rescan first, wait briefly,
-    then read the cache with a plain ``list`` call.
+    When wlan0 is in AP (hotspot) mode, ``nmcli --rescan yes`` blocks because the
+    interface is busy. We trigger a background rescan first, wait briefly, then read
+    the cache with a plain ``list`` call.
     """
     import time
-    from grabette.config import settings
 
-    if get_network_mode() == "hotspot":
-        # Trigger a background scan (non-blocking), then read the cache
+    in_hotspot = get_network_mode() == "hotspot"
+
+    if in_hotspot:
+        # Trigger a background scan, then read cache (--rescan yes doesn't work in AP mode)
         _run(["nmcli", "dev", "wifi", "rescan"], timeout=5)
         time.sleep(3)
         result = _run(
@@ -142,6 +143,9 @@ def scan_networks() -> list[dict]:
             timeout=15,
         )
 
+    # SSID à exclure des résultats : le réseau actuellement actif (propre hotspot ou connexion home)
+    own_ssid = get_current_ssid() or ""
+
     networks: list[dict] = []
     seen: set[str] = set()
     for line in result.stdout.splitlines():
@@ -149,8 +153,7 @@ def scan_networks() -> list[dict]:
         if idx < 0:
             continue
         ssid = line[:idx].strip()
-        # Exclure les SSIDs vides et le propre hotspot de grabette
-        if not ssid or ssid == settings.hotspot_ssid or ssid in seen:
+        if not ssid or ssid == own_ssid or ssid in seen:
             continue
         seen.add(ssid)
         try:
