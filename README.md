@@ -149,8 +149,8 @@ echo "GRABETTE_ROBOT_ID=2" | sudo tee /etc/grabette.env
 
 # Set the hostname so the screen can find grabette on home WiFi
 sudo hostnamectl set-hostname grabette-2
-# Edit /etc/hosts to replace any old hostname with grabette-2
-sudo sed -i 's/\braspi4\b/grabette-2/g' /etc/hosts
+# Update /etc/hosts (removes old 127.0.1.1 entry, adds the new one)
+sudo sed -i '/^127\.0\.1\.1/d' /etc/hosts && echo "127.0.1.1   grabette-2" | sudo tee -a /etc/hosts
 
 # Restart services to apply
 sudo systemctl restart grabette grabette-hotspot grabette-bluetooth
