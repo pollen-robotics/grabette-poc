@@ -11,6 +11,7 @@ ExecStart=/home/rasp/Project/Repo/grabette/.venv/bin/python -m grabette.bluetoot
 Restart=on-failure
 RestartSec=5
 User=root
+EnvironmentFile=-/etc/grabette.env
 Environment=PYTHONUNBUFFERED=1
 
 [Install]

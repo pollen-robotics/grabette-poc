@@ -12,6 +12,7 @@ Restart=on-failure
 RestartSec=10
 # Root required: nmcli connection add/up needs elevated privileges
 User=root
+EnvironmentFile=-/etc/grabette.env
 Environment=PYTHONUNBUFFERED=1
 
 [Install]

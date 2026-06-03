@@ -116,10 +116,16 @@ PIN is configurable via `GRABETTE_BT_PIN` env var (default: `00000`).
 
 ## Configuration
 
-All settings via environment variables with `GRABETTE_` prefix:
+All settings via environment variables with `GRABETTE_` prefix. The recommended way to set them persistently is `/etc/grabette.env` (sourced automatically by all grabette systemd services):
+
+```bash
+# /etc/grabette.env — create this file on the Raspberry Pi
+GRABETTE_ROBOT_ID=1
+```
 
 | Variable | Default | Description |
 |---|---|---|
+| `GRABETTE_ROBOT_ID` | `1` | Unit ID — sets the hotspot SSID to `grabette-{id}` |
 | `GRABETTE_HOST` | `0.0.0.0` | Server bind address |
 | `GRABETTE_PORT` | `8000` | Server port |
 | `GRABETTE_BACKEND` | `auto` | `auto`, `mock`, or `rpi` |
@@ -130,6 +136,42 @@ All settings via environment variables with `GRABETTE_` prefix:
 | `GRABETTE_UI_ENABLED` | `true` | Enable Gradio dashboard |
 | `GRABETTE_BUTTON_ENABLED` | `true` | Enable hardware button |
 | `GRABETTE_LOG_LEVEL` | `INFO` | Logging level |
+
+## Multi-device setup (Grabette ID)
+
+When running multiple grabette/grabette-screen pairs, give each pair a unique ID so each screen connects to its own grabette.
+
+### 1. Set the ID on the Raspberry Pi
+
+```bash
+# Create /etc/grabette.env with the unit's ID
+echo "GRABETTE_ROBOT_ID=2" | sudo tee /etc/grabette.env
+
+# Set the hostname so the screen can find grabette on home WiFi
+sudo hostnamectl set-hostname grabette-2
+# Edit /etc/hosts to replace any old hostname with grabette-2
+sudo sed -i 's/\braspi4\b/grabette-2/g' /etc/hosts
+
+# Restart services to apply
+sudo systemctl restart grabette grabette-hotspot grabette-bluetooth
+```
+
+The hotspot SSID is auto-derived: `GRABETTE_ROBOT_ID=2` → SSID `grabette-2`.
+
+### 2. Set the ID on the grabette-screen (ESP32)
+
+**First boot**: tap the grabette number on the ID selection screen.  
+**Later**: WiFi tab → **Change Grabette ID**.
+
+### What each ID changes
+
+| ID | Hotspot SSID | Home hostname |
+|---|---|---|
+| 1 (default) | `grabette-1` | `grabette-1.local` |
+| 2 | `grabette-2` | `grabette-2.local` |
+| N | `grabette-N` | `grabette-N.local` |
+
+> The screen stores the ID in flash (NVS) — it survives power cycles. Changing the ID restarts the screen to reconnect.
 
 ## Data
 
