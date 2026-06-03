@@ -4,7 +4,7 @@ help:
 	@echo "Targets:"
 	@echo "  install-rpi       Install apt deps + udev rule, create venv, sync, verify"
 	@echo "  install-udev-oak  Install only the OAK-D / Movidius udev rule"
-	@echo "  install-systemd   Install + enable the grabette systemd service"
+	@echo "  install-systemd   Install + enable grabette, grabette-hotspot, grabette-bluetooth services"
 
 # One-shot bring-up for a fresh Raspberry Pi (Bookworm or Trixie).
 # Handles the apt-package + correct-Python + system-site-packages combo that's
@@ -38,6 +38,8 @@ install-udev-oak:
 
 install-systemd:
 	sudo cp systemd/grabette.service /etc/systemd/system/
+	sudo cp systemd/grabette-hotspot.service /etc/systemd/system/
+	sudo cp systemd/grabette-bluetooth.service /etc/systemd/system/
 	sudo systemctl daemon-reload
-	sudo systemctl enable --now grabette
-	@echo "Logs: journalctl -u grabette -f"
+	sudo systemctl enable --now grabette grabette-hotspot grabette-bluetooth
+	@echo "Logs: journalctl -u grabette -u grabette-hotspot -u grabette-bluetooth -f"
