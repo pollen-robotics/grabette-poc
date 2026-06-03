@@ -20,6 +20,7 @@ from grabette.wifi import (
     deactivate_hotspot,
     ensure_hotspot_profile,
     get_network_mode,
+    prescan_and_cache,
 )
 
 logging.basicConfig(
@@ -50,7 +51,8 @@ def main() -> None:
             break
         time.sleep(2)
     else:
-        logger.info("No home WiFi after %ds — activating hotspot", WAIT_SECONDS)
+        logger.info("No home WiFi after %ds — pre-scanning then activating hotspot", WAIT_SECONDS)
+        prescan_and_cache()
         activate_hotspot()
 
     # Monitor loop
@@ -61,7 +63,8 @@ def main() -> None:
             logger.info("Home WiFi detected — deactivating hotspot")
             deactivate_hotspot()
         elif mode == "offline":
-            logger.info("Network lost — activating hotspot")
+            logger.info("Network lost — pre-scanning then activating hotspot")
+            prescan_and_cache()
             activate_hotspot()
         # mode == "hotspot": nothing to do
 

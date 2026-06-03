@@ -116,36 +116,71 @@ def deactivate_hotspot() -> bool:
 # Credential persistence
 # ---------------------------------------------------------------------------
 
+SCAN_CACHE_FILE = Path("/tmp/grabette_wifi_scan.json")
+
+
+def prescan_and_cache() -> int:
+    """Scan WiFi networks while wlan0 is in STA/offline mode and cache the results.
+
+    Must be called by hotspot_manager (root) just *before* activating the hotspot,
+    while the interface can still scan.  The API process (rasp user) cannot trigger
+    scans (requires NET_ADMIN), so it reads this cache file in AP mode.
+
+    Returns the number of networks found.
+    """
+    import os
+
+    result = _run(
+        ["nmcli", "--escape", "no", "-t", "-f", "SSID,SIGNAL",
+         "dev", "wifi", "list", "--rescan", "yes"],
+        timeout=15,
+    )
+    networks: list[dict] = []
+    seen: set[str] = set()
+    for line in result.stdout.splitlines():
+        idx = line.rfind(":")
+        if idx < 0:
+            continue
+        ssid = line[:idx].strip()
+        if not ssid or ssid in seen:
+            continue
+        seen.add(ssid)
+        try:
+            signal = int(line[idx + 1:].strip())
+        except ValueError:
+            continue
+        networks.append({"ssid": ssid, "signal": signal})
+    networks.sort(key=lambda n: n["signal"], reverse=True)
+    try:
+        SCAN_CACHE_FILE.write_text(json.dumps(networks))
+        os.chmod(SCAN_CACHE_FILE, 0o644)  # lisible par rasp
+    except Exception as exc:
+        logger.warning("Could not write scan cache: %s", exc)
+    logger.info("Pre-scan: %d networks cached", len(networks))
+    return len(networks)
+
+
 def scan_networks() -> list[dict]:
     """Return visible WiFi networks sorted by signal, excluding the current connection.
 
-    When wlan0 is in AP (hotspot) mode, ``nmcli --rescan yes`` blocks because the
-    interface is busy. We trigger a background rescan first, wait briefly, then read
-    the cache with a plain ``list`` call.
+    In hotspot (AP) mode wlan0 cannot scan (requires NET_ADMIN, held by NM/root).
+    Reads the cache written by prescan_and_cache() — called by hotspot_manager as
+    root just before activating the hotspot.  In STA mode, triggers a live scan.
     """
-    import time
-
-    in_hotspot = get_network_mode() == "hotspot"
-
-    if in_hotspot:
-        # Trigger a background scan, then read cache (--rescan yes doesn't work in AP mode)
-        _run(["nmcli", "dev", "wifi", "rescan"], timeout=5)
-        time.sleep(3)
-        result = _run(
-            ["nmcli", "--escape", "no", "-t", "-f", "SSID,SIGNAL",
-             "dev", "wifi", "list"],
-            timeout=10,
-        )
-    else:
-        result = _run(
-            ["nmcli", "--escape", "no", "-t", "-f", "SSID,SIGNAL",
-             "dev", "wifi", "list", "--rescan", "yes"],
-            timeout=15,
-        )
-
-    # SSID à exclure des résultats : le réseau actuellement actif (propre hotspot ou connexion home)
     own_ssid = get_current_ssid() or ""
 
+    if get_network_mode() == "hotspot":
+        try:
+            data = json.loads(SCAN_CACHE_FILE.read_text())
+            return [n for n in data if n.get("ssid") != own_ssid]
+        except (FileNotFoundError, json.JSONDecodeError):
+            return []
+
+    result = _run(
+        ["nmcli", "--escape", "no", "-t", "-f", "SSID,SIGNAL",
+         "dev", "wifi", "list", "--rescan", "yes"],
+        timeout=15,
+    )
     networks: list[dict] = []
     seen: set[str] = set()
     for line in result.stdout.splitlines():
