@@ -19,6 +19,7 @@ from grabette.wifi import (
     get_local_ip,
     get_network_mode,
     load_home_credentials,
+    save_home_credentials,
     scan_networks,
     wifi_connect,
 )
@@ -82,12 +83,28 @@ _last_connect: dict = {"status": "idle", "message": ""}
 
 
 def _do_connect(ssid: str, password: str) -> None:
+    import time
     global _last_connect
     _last_connect = {"status": "connecting", "message": f"Connecting to {ssid}…"}
+
+    # Save credentials BEFORE connecting: the hotspot deactivates as soon as
+    # nmcli switches wlan0 to STA mode, so grabette-screen must be able to
+    # fetch them while the hotspot is still up.
+    save_home_credentials(ssid, password, settings.hotspot_credentials_file)
+
+    # Short pause so grabette-screen (polling every ~1.5 s) has at least one
+    # chance to fetch the credentials before the hotspot goes down.
+    time.sleep(3)
+
     result = wifi_connect(ssid, password, settings.hotspot_credentials_file)
     if result.startswith("OK:"):
         _last_connect = {"status": "ok", "message": result}
     else:
+        # Connection failed — remove the pre-saved credentials
+        try:
+            settings.hotspot_credentials_file.unlink(missing_ok=True)
+        except Exception:
+            pass
         _last_connect = {"status": "error", "message": result}
 
 
