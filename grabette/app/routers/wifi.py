@@ -77,11 +77,33 @@ def wifi_scan() -> list[dict]:
     return scan_networks()
 
 
+# Résultat de la dernière tentative de connexion — lu par /api/wifi/connect-result
+_last_connect: dict = {"status": "idle", "message": ""}
+
+
+def _do_connect(ssid: str, password: str) -> None:
+    global _last_connect
+    _last_connect = {"status": "connecting", "message": f"Connecting to {ssid}…"}
+    result = wifi_connect(ssid, password, settings.hotspot_credentials_file)
+    if result.startswith("OK:"):
+        _last_connect = {"status": "ok", "message": result}
+    else:
+        _last_connect = {"status": "error", "message": result}
+
+
 @router.post("/connect", status_code=202)
 def wifi_connect_endpoint(req: ConnectRequest, background_tasks: BackgroundTasks):
     """Connect grabette to the given network. Returns 202 immediately; connection runs in background."""
-    background_tasks.add_task(wifi_connect, req.ssid, req.password, settings.hotspot_credentials_file)
+    global _last_connect
+    _last_connect = {"status": "connecting", "message": f"Connecting to {req.ssid}…"}
+    background_tasks.add_task(_do_connect, req.ssid, req.password)
     return {"status": "connecting", "ssid": req.ssid}
+
+
+@router.get("/connect-result")
+def wifi_connect_result() -> dict:
+    """Return the result of the last connection attempt."""
+    return _last_connect
 
 
 # ---------------------------------------------------------------------------
@@ -118,10 +140,20 @@ _WIFI_SETUP_HTML = """\
   .signal { font-size: .75rem; color: #888; }
   #form { display: none; background: #1e1e1e; border-radius: 8px; padding: 16px; margin-bottom: 12px; }
   #form label { display: block; margin-bottom: 6px; color: #0ff; font-size: .9rem; }
-  #form input {
-    width: 100%; padding: 8px 10px; border-radius: 4px;
-    border: 1px solid #444; background: #111; color: #eee;
-    font-size: 1rem; margin-bottom: 12px;
+  .pw-row { display: flex; gap: 8px; margin-bottom: 12px; }
+  .pw-row input {
+    flex: 1; padding: 8px 10px; border-radius: 4px;
+    border: 1px solid #444; background: #111; color: #eee; font-size: 1rem;
+  }
+  .pw-row .toggle {
+    padding: 8px 14px; background: #333; border: 1px solid #444;
+    border-radius: 4px; color: #ccc; font-size: .85rem; cursor: pointer; white-space: nowrap;
+  }
+  .pw-row .toggle:hover { background: #444; }
+  #error-box {
+    display: none; background: #2a0000; border: 1px solid #f44; border-radius: 6px;
+    padding: 10px 14px; margin-bottom: 12px; font-size: .85rem; color: #f88;
+    word-break: break-word;
   }
   button {
     padding: 10px 20px; border: none; border-radius: 6px;
@@ -135,10 +167,15 @@ _WIFI_SETUP_HTML = """\
 <body>
 <h1>Grabette — WiFi Setup</h1>
 <div id="status">Scanning networks…</div>
+<div id="error-box"></div>
 <ul id="networks"></ul>
 <div id="form">
   <label id="net-label">Password for: <strong id="net-name"></strong></label>
-  <input type="password" id="password" placeholder="WiFi password" autocomplete="off">
+  <div class="pw-row">
+    <input type="password" id="password" placeholder="WiFi password" autocomplete="off"
+           onkeydown="if(event.key==='Enter') connect()">
+    <button type="button" class="toggle" id="pw-toggle" onclick="togglePw()">Show</button>
+  </div>
   <button onclick="connect()">Connect</button>
   <button class="secondary" onclick="cancelForm()">Cancel</button>
 </div>
@@ -147,9 +184,12 @@ _WIFI_SETUP_HTML = """\
 
 <script>
 let selectedSsid = null;
+let checkAttempts = 0;
+const MAX_CHECKS = 15; // 15 × 3 s = 45 s max
 
 async function scan() {
   setStatus('Scanning…');
+  hideError();
   document.getElementById('networks').innerHTML = '';
   try {
     const r = await fetch('/api/wifi/scan');
@@ -172,6 +212,9 @@ function selectNet(ssid, el) {
   selectedSsid = ssid;
   document.getElementById('net-name').textContent = ssid;
   document.getElementById('password').value = '';
+  document.getElementById('pw-toggle').textContent = 'Show';
+  document.getElementById('password').type = 'password';
+  hideError();
   document.getElementById('form').style.display = 'block';
   document.getElementById('password').focus();
 }
@@ -179,14 +222,24 @@ function selectNet(ssid, el) {
 function cancelForm() {
   document.getElementById('form').style.display = 'none';
   selectedSsid = null;
+  hideError();
+}
+
+function togglePw() {
+  const pw = document.getElementById('password');
+  const btn = document.getElementById('pw-toggle');
+  if (pw.type === 'password') { pw.type = 'text';     btn.textContent = 'Hide'; }
+  else                        { pw.type = 'password'; btn.textContent = 'Show'; }
 }
 
 async function connect() {
   if (!selectedSsid) return;
   const pw = document.getElementById('password').value;
+  hideError();
   document.getElementById('form').style.display = 'none';
   document.getElementById('spinner').style.display = 'block';
-  setStatus('Connecting to ' + selectedSsid + '…');
+  setStatus('Connecting to ' + escHtml(selectedSsid) + '…');
+  checkAttempts = 0;
   try {
     const r = await fetch('/api/wifi/connect', {
       method: 'POST',
@@ -194,33 +247,61 @@ async function connect() {
       body: JSON.stringify({ssid: selectedSsid, password: pw})
     });
     if (r.status === 202) {
-      setStatus('Connection in progress… checking in 10s', 'ok');
-      setTimeout(checkStatus, 10000);
+      setTimeout(checkStatus, 3000);
     } else {
       const d = await r.json();
-      setStatus('Error: ' + (d.detail || r.status), 'err');
+      showError('HTTP ' + r.status + ': ' + (d.detail || 'Unknown error'));
       document.getElementById('spinner').style.display = 'none';
+      document.getElementById('form').style.display = 'block';
     }
   } catch(e) {
-    setStatus('Request failed: ' + e, 'err');
+    showError('Request failed: ' + e);
     document.getElementById('spinner').style.display = 'none';
+    document.getElementById('form').style.display = 'block';
   }
 }
 
 async function checkStatus() {
+  checkAttempts++;
   try {
-    const r = await fetch('/api/wifi/status');
-    const d = await r.json();
-    if (d.mode === 'connected') {
+    const [wifiRes, connRes] = await Promise.all([
+      fetch('/api/wifi/status'),
+      fetch('/api/wifi/connect-result')
+    ]);
+    const wifi = await wifiRes.json();
+    const conn = await connRes.json();
+
+    // Connection failed → show error and re-display form
+    if (conn.status === 'error') {
       document.getElementById('spinner').style.display = 'none';
-      setStatus('Connected to: ' + d.ssid, 'ok');
-    } else {
-      setStatus('Still connecting… retrying in 5s');
-      setTimeout(checkStatus, 5000);
+      showError(conn.message);
+      setStatus('Connection failed.', 'err');
+      document.getElementById('form').style.display = 'block';
+      return;
     }
+
+    // Connected!
+    if (wifi.mode === 'connected') {
+      document.getElementById('spinner').style.display = 'none';
+      setStatus('✓ Connected to: ' + wifi.ssid, 'ok');
+      return;
+    }
+
+    // Timeout
+    if (checkAttempts >= MAX_CHECKS) {
+      document.getElementById('spinner').style.display = 'none';
+      showError('Connection timed out. Check the password and try again.');
+      setStatus('Connection timed out.', 'err');
+      document.getElementById('form').style.display = 'block';
+      return;
+    }
+
+    setStatus('Connecting… (' + checkAttempts + ')');
+    setTimeout(checkStatus, 3000);
   } catch(e) {
-    setStatus('Grabette unreachable (it may have switched networks). Done!', 'ok');
+    // Grabette unreachable = it switched networks = success
     document.getElementById('spinner').style.display = 'none';
+    setStatus('✓ Grabette switched to the new network.', 'ok');
   }
 }
 
@@ -228,6 +309,16 @@ function setStatus(msg, cls) {
   const el = document.getElementById('status');
   el.textContent = msg;
   el.className = cls || '';
+}
+
+function showError(msg) {
+  const el = document.getElementById('error-box');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+function hideError() {
+  document.getElementById('error-box').style.display = 'none';
 }
 
 function escHtml(s) {
