@@ -70,12 +70,13 @@ def get_local_ip() -> str | None:
 # Hotspot profile management
 # ---------------------------------------------------------------------------
 
-def ensure_hotspot_profile(ssid: str, password: str) -> bool:
-    """Create the NM hotspot profile if it doesn't already exist. Returns True on success."""
-    result = _run(["nmcli", "-t", "-f", "name", "con", "show"])
-    existing = {line.strip() for line in result.stdout.splitlines()}
-    if HOTSPOT_CONN_NAME in existing:
-        return True
+def ensure_hotspot_profile(ssid: str) -> bool:
+    """Create (or recreate) the open NM hotspot profile. Returns True on success.
+
+    Always deletes and recreates so that any previously secured profile is replaced.
+    Safe: this function runs once at boot before the hotspot is activated.
+    """
+    _run(["nmcli", "connection", "delete", HOTSPOT_CONN_NAME])  # ignore errors
 
     result = _run([
         "nmcli", "connection", "add",
@@ -84,14 +85,12 @@ def ensure_hotspot_profile(ssid: str, password: str) -> bool:
         "con-name", HOTSPOT_CONN_NAME,
         "ssid", ssid,
         "802-11-wireless.mode", "ap",
-        "802-11-wireless-security.key-mgmt", "wpa-psk",
-        "802-11-wireless-security.psk", password,
         "ipv4.method", "shared",
         "ipv4.addresses", "192.168.42.1/24",
         "connection.autoconnect", "no",
     ])
     if result.returncode == 0:
-        logger.info("Hotspot profile '%s' created (SSID: %s)", HOTSPOT_CONN_NAME, ssid)
+        logger.info("Hotspot profile '%s' created (SSID: %s, open network)", HOTSPOT_CONN_NAME, ssid)
         return True
     logger.error("Failed to create hotspot profile: %s", result.stderr.strip())
     return False

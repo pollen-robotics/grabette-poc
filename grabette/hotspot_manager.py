@@ -40,7 +40,7 @@ def main() -> None:
         settings.hotspot_ssid,
     )
 
-    ensure_hotspot_profile(settings.hotspot_ssid, settings.hotspot_password)
+    ensure_hotspot_profile(settings.hotspot_ssid)
 
     # Wait for home WiFi
     deadline = time.monotonic() + WAIT_SECONDS
