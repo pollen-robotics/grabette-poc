@@ -71,12 +71,26 @@ def get_local_ip() -> str | None:
 # ---------------------------------------------------------------------------
 
 def ensure_hotspot_profile(ssid: str) -> bool:
-    """Create (or recreate) the open NM hotspot profile. Returns True on success.
+    """Ensure the NM hotspot profile exists with the correct SSID. Returns True on success.
 
-    Always deletes and recreates so that any previously secured profile is replaced.
-    Safe: this function runs once at boot before the hotspot is activated.
+    Only deletes and recreates the profile if:
+    - it doesn't exist yet, OR
+    - the SSID has changed (e.g. robot_id was updated).
+    Leaving an existing correct profile untouched avoids disrupting an active hotspot
+    and prevents NM from auto-connecting to a remembered home network on profile deletion.
     """
-    _run(["nmcli", "connection", "delete", HOTSPOT_CONN_NAME])  # ignore errors
+    existing = {line.strip() for line in _run(["nmcli", "-t", "-f", "name", "con", "show"]).stdout.splitlines()}
+
+    if HOTSPOT_CONN_NAME in existing:
+        current_ssid = _run(
+            ["nmcli", "-g", "802-11-wireless.ssid", "con", "show", HOTSPOT_CONN_NAME]
+        ).stdout.strip()
+        if current_ssid == ssid:
+            logger.info("Hotspot profile '%s' already correct (SSID: %s)", HOTSPOT_CONN_NAME, ssid)
+            return True
+        # SSID mismatch (e.g. robot_id changed) → recreate
+        logger.info("Hotspot SSID mismatch ('%s' != '%s') — recreating profile", current_ssid, ssid)
+        _run(["nmcli", "connection", "delete", HOTSPOT_CONN_NAME])
 
     result = _run([
         "nmcli", "connection", "add",
