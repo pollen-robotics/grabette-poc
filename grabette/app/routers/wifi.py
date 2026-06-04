@@ -59,6 +59,29 @@ def wifi_status() -> WifiStatus:
     return WifiStatus(mode=get_network_mode(), ssid=get_current_ssid(), ip=get_local_ip())
 
 
+@router.get("/credentials-wait", response_model=WifiCredentials)
+async def wifi_credentials_wait(request: Request, timeout: int = 25) -> WifiCredentials:
+    """Long-poll: holds the connection until home credentials are saved (or timeout).
+
+    grabette-screen calls this once and waits.  As soon as _do_connect() writes
+    the credentials file (before nmcli runs), this endpoint responds immediately.
+    Non-blocking: uses asyncio.sleep so other requests are not stalled.
+    """
+    import asyncio
+    client_ip = request.client.host if request.client else ""
+    if not client_ip.startswith(_HOTSPOT_SUBNET):
+        raise HTTPException(status_code=403, detail="Only accessible from hotspot network")
+    loop = asyncio.get_event_loop()
+    deadline = loop.time() + min(timeout, 30)
+    while True:
+        creds = load_home_credentials(settings.hotspot_credentials_file)
+        if creds is not None:
+            return WifiCredentials(**creds)
+        if loop.time() >= deadline:
+            raise HTTPException(status_code=408, detail="Timeout waiting for credentials")
+        await asyncio.sleep(0.5)
+
+
 @router.get("/credentials", response_model=WifiCredentials)
 def wifi_credentials(request: Request) -> WifiCredentials:
     client_ip = request.client.host if request.client else ""
