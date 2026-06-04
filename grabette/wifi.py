@@ -85,11 +85,18 @@ def ensure_hotspot_profile(ssid: str, password: str) -> bool:
         current_ssid = _run(
             ["nmcli", "-g", "802-11-wireless.ssid", "con", "show", HOTSPOT_CONN_NAME]
         ).stdout.strip()
-        if current_ssid == ssid:
+        current_keymgmt = _run(
+            ["nmcli", "-g", "802-11-wireless-security.key-mgmt", "con", "show", HOTSPOT_CONN_NAME]
+        ).stdout.strip()
+        want_keymgmt = "wpa-psk" if password else ""
+        if current_ssid == ssid and current_keymgmt == want_keymgmt:
             logger.info("Hotspot profile '%s' already correct (SSID: %s)", HOTSPOT_CONN_NAME, ssid)
             return True
-        # SSID mismatch (e.g. robot_id changed) → recreate
-        logger.info("Hotspot SSID mismatch ('%s' != '%s') — recreating profile", current_ssid, ssid)
+        # SSID or security mismatch → recreate
+        logger.info(
+            "Hotspot profile mismatch (ssid: '%s'→'%s', security: '%s'→'%s') — recreating",
+            current_ssid, ssid, current_keymgmt, want_keymgmt,
+        )
         _run(["nmcli", "connection", "delete", HOTSPOT_CONN_NAME])
 
     result = _run([

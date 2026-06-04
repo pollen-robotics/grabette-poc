@@ -64,22 +64,34 @@ def wifi_status() -> WifiStatus:
 
 @router.get("/credentials-wait", response_model=WifiCredentials)
 async def wifi_credentials_wait(request: Request, timeout: int = 25) -> WifiCredentials:
-    """Long-poll: holds the connection until home credentials are saved (or timeout).
+    """Long-poll: holds the connection until *fresh* home credentials are saved (or timeout).
 
     grabette-screen calls this once and waits.  As soon as _do_connect() writes
     the credentials file (before nmcli runs), this endpoint responds immediately.
     Non-blocking: uses asyncio.sleep so other requests are not stalled.
+
+    Only returns credentials written in the last 120 s.  Older credentials are
+    considered stale (the screen already has them in its NVS) and are ignored,
+    preventing loops where the screen keeps acting on a previous session's data.
     """
     import asyncio
+    import time as _time
     client_ip = request.client.host if request.client else ""
     if not client_ip.startswith(_HOTSPOT_SUBNET):
         raise HTTPException(status_code=403, detail="Only accessible from hotspot network")
     loop = asyncio.get_event_loop()
     deadline = loop.time() + min(timeout, 30)
     while True:
-        creds = load_home_credentials(settings.hotspot_credentials_file)
-        if creds is not None:
-            return WifiCredentials(**creds)
+        creds_path = settings.hotspot_credentials_file
+        if creds_path.exists():
+            try:
+                age = _time.time() - creds_path.stat().st_mtime
+                if age < 120:  # only fresh credentials (written in the last 2 min)
+                    creds = load_home_credentials(creds_path)
+                    if creds is not None:
+                        return WifiCredentials(**creds)
+            except OSError:
+                pass
         if loop.time() >= deadline:
             raise HTTPException(status_code=408, detail="Timeout waiting for credentials")
         await asyncio.sleep(0.5)
