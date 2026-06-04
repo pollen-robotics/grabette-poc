@@ -51,6 +51,10 @@ class Settings(BaseSettings):
     # Set via GRABETTE_ROBOT_ID=2 in /etc/grabette.env
     robot_id: int = 1
 
+    # Hotspot password — set via GRABETTE_HOTSPOT_PASSWORD in /etc/grabette.env
+    # Must match GRABETTE_HOTSPOT_PASS in grabette-screen/src/config.h
+    hotspot_password: str = "grabette"
+
     @property
     def hotspot_ssid(self) -> str:
         """Hotspot SSID, auto-derived as 'grabette-{robot_id}'. Set GRABETTE_ROBOT_ID to change."""

@@ -70,8 +70,8 @@ def get_local_ip() -> str | None:
 # Hotspot profile management
 # ---------------------------------------------------------------------------
 
-def ensure_hotspot_profile(ssid: str) -> bool:
-    """Ensure the NM hotspot profile exists with the correct SSID. Returns True on success.
+def ensure_hotspot_profile(ssid: str, password: str) -> bool:
+    """Ensure the NM hotspot profile exists with the correct SSID and password.
 
     Only deletes and recreates the profile if:
     - it doesn't exist yet, OR
@@ -99,12 +99,14 @@ def ensure_hotspot_profile(ssid: str) -> bool:
         "con-name", HOTSPOT_CONN_NAME,
         "ssid", ssid,
         "802-11-wireless.mode", "ap",
+        "802-11-wireless-security.key-mgmt", "wpa-psk",
+        "802-11-wireless-security.psk", password,
         "ipv4.method", "shared",
         "ipv4.addresses", "192.168.42.1/24",
         "connection.autoconnect", "no",
     ])
     if result.returncode == 0:
-        logger.info("Hotspot profile '%s' created (SSID: %s, open network)", HOTSPOT_CONN_NAME, ssid)
+        logger.info("Hotspot profile '%s' created (SSID: %s)", HOTSPOT_CONN_NAME, ssid)
         return True
     logger.error("Failed to create hotspot profile: %s", result.stderr.strip())
     return False
