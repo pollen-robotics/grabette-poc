@@ -107,6 +107,9 @@ def ensure_hotspot_profile(ssid: str, password: str) -> bool:
         "ssid", ssid,
         "802-11-wireless.mode", "ap",
         "802-11-wireless-security.key-mgmt", "wpa-psk",
+        "802-11-wireless-security.proto", "rsn",      # WPA2 only — not WPA1/TKIP
+        "802-11-wireless-security.pairwise", "ccmp",  # AES — ESP32 has known bugs with TKIP
+        "802-11-wireless-security.group", "ccmp",
         "802-11-wireless-security.psk", password,
         "ipv4.method", "shared",
         "ipv4.addresses", "192.168.42.1/24",
