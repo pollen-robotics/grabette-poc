@@ -167,7 +167,7 @@ def prescan_and_cache() -> int:
     networks.sort(key=lambda n: n["signal"], reverse=True)
     try:
         SCAN_CACHE_FILE.write_text(json.dumps(networks))
-        os.chmod(SCAN_CACHE_FILE, 0o644)  # lisible par rasp
+        os.chmod(SCAN_CACHE_FILE, 0o644)  # readable by rasp user
     except Exception as exc:
         logger.warning("Could not write scan cache: %s", exc)
     logger.info("Pre-scan: %d networks cached", len(networks))

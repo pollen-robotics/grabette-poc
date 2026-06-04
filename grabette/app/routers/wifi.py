@@ -1,10 +1,10 @@
 """WiFi status, configuration, and setup page endpoints.
 
-GET  /api/wifi/status      → mode + SSID courant
-GET  /api/wifi/credentials → SSID + password du réseau home (subnet hotspot uniquement)
-GET  /api/wifi/scan        → liste des réseaux visibles
-POST /api/wifi/connect     → connecte grabette au réseau choisi (async, retourne 202)
-GET  /api/wifi/setup       → page HTML de configuration (navigateur sur hotspot)
+GET  /api/wifi/status      → mode + current SSID
+GET  /api/wifi/credentials → SSID + password of home network (hotspot subnet only)
+GET  /api/wifi/scan        → list of visible networks
+POST /api/wifi/connect     → connects grabette to the chosen network (async, returns 202)
+GET  /api/wifi/setup       → HTML configuration page (browser on hotspot)
 """
 
 from __future__ import annotations
@@ -105,7 +105,7 @@ def wifi_scan() -> list[dict]:
     return scan_networks()
 
 
-# Résultat de la dernière tentative de connexion — lu par /api/wifi/connect-result
+# Result of the last connection attempt — read by /api/wifi/connect-result
 _last_connect: dict = {"status": "idle", "message": ""}
 
 

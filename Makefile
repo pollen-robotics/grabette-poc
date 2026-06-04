@@ -42,6 +42,8 @@ install-systemd:
 	sudo cp systemd/grabette-bluetooth.service /etc/systemd/system/
 	sudo cp systemd/10-grabette-network.rules /etc/polkit-1/rules.d/
 	sudo systemctl restart polkit
+	sudo mkdir -p /var/lib/grabette
+	sudo chown rasp:rasp /var/lib/grabette
 	sudo systemctl daemon-reload
 	sudo systemctl enable --now grabette grabette-hotspot grabette-bluetooth
 	@echo "Logs: journalctl -u grabette -u grabette-hotspot -u grabette-bluetooth -f"
