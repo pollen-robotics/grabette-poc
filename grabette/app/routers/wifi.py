@@ -9,13 +9,16 @@ GET  /api/wifi/setup       → page HTML de configuration (navigateur sur hotspo
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
+logger = logging.getLogger(__name__)
+
 from grabette.config import settings
 from grabette.wifi import (
-    deactivate_hotspot,
     get_current_ssid,
     get_local_ip,
     get_network_mode,
@@ -110,30 +113,30 @@ def _do_connect(ssid: str, password: str) -> None:
     import time
     global _last_connect
     _last_connect = {"status": "connecting", "message": f"Connecting to {ssid}…"}
+    logger.info("[wifi] _do_connect started: ssid=%s", ssid)
 
-    # 1. Save credentials BEFORE connecting so grabette-screen can fetch them
-    #    while the hotspot is still active.
-    save_home_credentials(ssid, password, settings.hotspot_credentials_file)
+    try:
+        # Save credentials BEFORE nmcli so grabette-screen can fetch them
+        # via /credentials-wait while the hotspot is still active.
+        save_home_credentials(ssid, password, settings.hotspot_credentials_file)
+        logger.info("[wifi] credentials saved, waiting 3 s for grabette-screen…")
+        time.sleep(3)
 
-    # 2. Give grabette-screen time to fetch the credentials (it polls every 1.5 s).
-    time.sleep(3)
+        logger.info("[wifi] calling wifi_connect…")
+        result = wifi_connect(ssid, password, settings.hotspot_credentials_file)
+        logger.info("[wifi] wifi_connect result: %s", result)
 
-    # 3. Explicitly deactivate the hotspot before connecting.
-    #    Letting nmcli handle the AP→STA transition implicitly is slow and
-    #    can exceed the connection timeout.  Deactivating first is faster.
-    deactivate_hotspot()
-    time.sleep(1)  # let wlan0 settle in managed mode before connecting
-
-    result = wifi_connect(ssid, password, settings.hotspot_credentials_file)
-    if result.startswith("OK:"):
-        _last_connect = {"status": "ok", "message": result}
-    else:
-        # Connection failed — remove the pre-saved credentials
-        try:
-            settings.hotspot_credentials_file.unlink(missing_ok=True)
-        except Exception:
-            pass
-        _last_connect = {"status": "error", "message": result}
+        if result.startswith("OK:"):
+            _last_connect = {"status": "ok", "message": result}
+        else:
+            try:
+                settings.hotspot_credentials_file.unlink(missing_ok=True)
+            except Exception:
+                pass
+            _last_connect = {"status": "error", "message": result}
+    except Exception as exc:
+        logger.exception("[wifi] _do_connect exception: %s", exc)
+        _last_connect = {"status": "error", "message": f"ERROR: {exc}"}
 
 
 @router.post("/connect", status_code=202)
