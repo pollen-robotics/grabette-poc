@@ -94,7 +94,7 @@ def ensure_hotspot_profile(ssid: str, password: str) -> bool:
             return True
         # SSID or security mismatch → recreate
         logger.info(
-            "Hotspot profile mismatch (ssid: '%s'→'%s', security: '%s'→'%s') — recreating",
+            "Hotspot profile mismatch (ssid: '%s'->'%s', security: '%s'->'%s') - recreating",
             current_ssid, ssid, current_keymgmt, want_keymgmt,
         )
         _run(["nmcli", "connection", "delete", HOTSPOT_CONN_NAME])
