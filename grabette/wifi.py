@@ -218,7 +218,7 @@ def wifi_connect(ssid: str, password: str, credentials_file: Path) -> str:
     try:
         result = _run(
             ["nmcli", "device", "wifi", "connect", ssid, "password", password],
-            timeout=30,
+            timeout=60,
         )
         if result.returncode == 0:
             save_home_credentials(ssid, password, credentials_file)

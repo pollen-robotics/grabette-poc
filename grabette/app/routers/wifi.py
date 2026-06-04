@@ -15,6 +15,7 @@ from pydantic import BaseModel
 
 from grabette.config import settings
 from grabette.wifi import (
+    deactivate_hotspot,
     get_current_ssid,
     get_local_ip,
     get_network_mode,
@@ -87,14 +88,18 @@ def _do_connect(ssid: str, password: str) -> None:
     global _last_connect
     _last_connect = {"status": "connecting", "message": f"Connecting to {ssid}…"}
 
-    # Save credentials BEFORE connecting: the hotspot deactivates as soon as
-    # nmcli switches wlan0 to STA mode, so grabette-screen must be able to
-    # fetch them while the hotspot is still up.
+    # 1. Save credentials BEFORE connecting so grabette-screen can fetch them
+    #    while the hotspot is still active.
     save_home_credentials(ssid, password, settings.hotspot_credentials_file)
 
-    # Short pause so grabette-screen (polling every ~1.5 s) has at least one
-    # chance to fetch the credentials before the hotspot goes down.
+    # 2. Give grabette-screen time to fetch the credentials (it polls every 1.5 s).
     time.sleep(3)
+
+    # 3. Explicitly deactivate the hotspot before connecting.
+    #    Letting nmcli handle the AP→STA transition implicitly is slow and
+    #    can exceed the connection timeout.  Deactivating first is faster.
+    deactivate_hotspot()
+    time.sleep(1)  # let wlan0 settle in managed mode before connecting
 
     result = wifi_connect(ssid, password, settings.hotspot_credentials_file)
     if result.startswith("OK:"):
@@ -202,7 +207,7 @@ _WIFI_SETUP_HTML = """\
 <script>
 let selectedSsid = null;
 let checkAttempts = 0;
-const MAX_CHECKS = 15; // 15 × 3 s = 45 s max
+const MAX_CHECKS = 30; // 30 × 3 s = 90 s max
 
 async function scan() {
   setStatus('Scanning…');
