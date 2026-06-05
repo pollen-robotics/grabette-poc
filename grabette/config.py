@@ -61,7 +61,13 @@ class Settings(BaseSettings):
 
     @property
     def hotspot_ssid(self) -> str:
-        """Hotspot SSID, e.g. 'lgrabette-1' or 'rgrabette-2'. Set GRABETTE_ROBOT_TYPE and GRABETTE_ROBOT_ID."""
+        """Hotspot SSID derived from the system hostname when it matches [lr]grabette(-\\d+)?.
+        Falls back to GRABETTE_ROBOT_TYPE + GRABETTE_ROBOT_ID if the hostname doesn't match."""
+        import re
+        import socket
+        hostname = socket.gethostname()
+        if re.match(r"^[lr]grabette(-\d+)?$", hostname):
+            return hostname
         return f"{self.robot_type}grabette-{self.robot_id}"
 
     # File written by the BLE service (root) and read by the API (rasp user)
