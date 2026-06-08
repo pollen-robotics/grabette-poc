@@ -184,44 +184,45 @@ _WIFI_SETUP_HTML = """\
 <title>Grabette — WiFi Setup</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: #111; color: #eee; font-family: sans-serif; padding: 20px; max-width: 480px; margin: auto; }
-  h1 { color: #0ff; font-size: 1.3rem; margin-bottom: 16px; }
-  #status { font-size: .85rem; color: #aaa; margin-bottom: 12px; min-height: 1.2em; }
-  #status.ok  { color: #0f0; }
-  #status.err { color: #f44; }
+  body { background: #111827; color: #f1f5f9; font-family: sans-serif; padding: 20px; max-width: 480px; margin: auto; }
+  h1 { color: #f97316; font-size: 1.3rem; margin-bottom: 16px; }
+  #status { font-size: .85rem; color: #94a3b8; margin-bottom: 12px; min-height: 1.2em; }
+  #status.ok  { color: #4ade80; }
+  #status.err { color: #f87171; }
   #networks { list-style: none; margin-bottom: 16px; }
   #networks li {
     display: flex; justify-content: space-between; align-items: center;
     padding: 10px 12px; margin-bottom: 4px; border-radius: 6px;
-    background: #1e1e1e; cursor: pointer; border: 1px solid #333;
+    background: #1e293b; cursor: pointer; border: 1px solid #334155;
   }
-  #networks li:hover { background: #2a2a2a; border-color: #0ff; }
-  #networks li.selected { background: #003333; border-color: #0ff; }
-  .signal { font-size: .75rem; color: #888; }
-  #form { display: none; background: #1e1e1e; border-radius: 8px; padding: 16px; margin-bottom: 12px; }
-  #form label { display: block; margin-bottom: 6px; color: #0ff; font-size: .9rem; }
+  #networks li:hover { background: #263548; border-color: #f97316; }
+  #networks li.selected { background: #2d1f0e; border-color: #f97316; }
+  .signal { font-size: .75rem; color: #94a3b8; }
+  #form { display: none; background: #1e293b; border-radius: 8px; padding: 16px; margin-bottom: 12px; border: 1px solid #334155; }
+  #form label { display: block; margin-bottom: 6px; color: #f97316; font-size: .9rem; }
   .pw-row { display: flex; gap: 8px; margin-bottom: 12px; }
   .pw-row input {
     flex: 1; padding: 8px 10px; border-radius: 4px;
-    border: 1px solid #444; background: #111; color: #eee; font-size: 1rem;
+    border: 1px solid #475569; background: #0f172a; color: #f1f5f9; font-size: 1rem;
   }
   .pw-row .toggle {
-    padding: 8px 14px; background: #333; border: 1px solid #444;
-    border-radius: 4px; color: #ccc; font-size: .85rem; cursor: pointer; white-space: nowrap;
+    padding: 8px 14px; background: #334155; border: 1px solid #475569;
+    border-radius: 4px; color: #cbd5e1; font-size: .85rem; cursor: pointer; white-space: nowrap;
   }
-  .pw-row .toggle:hover { background: #444; }
+  .pw-row .toggle:hover { background: #475569; }
   #error-box {
-    display: none; background: #2a0000; border: 1px solid #f44; border-radius: 6px;
-    padding: 10px 14px; margin-bottom: 12px; font-size: .85rem; color: #f88;
+    display: none; background: #2a0000; border: 1px solid #f87171; border-radius: 6px;
+    padding: 10px 14px; margin-bottom: 12px; font-size: .85rem; color: #fca5a5;
     word-break: break-word;
   }
   button {
     padding: 10px 20px; border: none; border-radius: 6px;
-    background: #006666; color: #fff; font-size: 1rem; cursor: pointer;
+    background: #f97316; color: #fff; font-size: 1rem; cursor: pointer; font-weight: 600;
   }
-  button:hover { background: #008888; }
-  button.secondary { background: #333; margin-left: 8px; }
-  #spinner { display: none; color: #0ff; margin-top: 10px; }
+  button:hover { background: #ea6c0a; }
+  button.secondary { background: #334155; font-weight: 400; margin-left: 8px; }
+  button.secondary:hover { background: #475569; }
+  #spinner { display: none; color: #f97316; margin-top: 10px; }
 </style>
 </head>
 <body>

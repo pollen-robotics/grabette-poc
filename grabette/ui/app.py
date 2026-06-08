@@ -102,6 +102,135 @@ _ANGLE_IFRAME_PAUSED = (
     'border-radius:8px;background:#1a1a1a;"></iframe>'
 )
 
+_WIFI_SETTINGS_HTML = """
+<div id="wifi-section">
+<style>
+#wifi-section { font-family: sans-serif; color: #f1f5f9; }
+#wifi-st { font-size:.85rem; color:#94a3b8; margin-bottom:12px; min-height:1.2em; }
+#wifi-st.ok  { color:#4ade80; }
+#wifi-st.err { color:#f87171; }
+#wifi-nets { list-style:none; margin-bottom:16px; padding:0; }
+#wifi-nets li {
+  display:flex; justify-content:space-between; align-items:center;
+  padding:8px 12px; margin-bottom:4px; border-radius:6px;
+  background:#1e293b; cursor:pointer; border:1px solid #334155;
+}
+#wifi-nets li:hover { background:#263548; border-color:#f97316; }
+#wifi-nets li.wsel { background:#2d1f0e; border-color:#f97316; }
+.wifi-sig { font-size:.75rem; color:#94a3b8; }
+#wifi-form {
+  display:none; background:#1e293b; border-radius:8px;
+  padding:14px; margin-bottom:12px; border:1px solid #334155;
+}
+#wifi-form label { display:block; margin-bottom:6px; color:#f97316; font-size:.9rem; }
+.wifi-pw { display:flex; gap:8px; margin-bottom:12px; }
+.wifi-pw input {
+  flex:1; padding:8px 10px; border-radius:4px;
+  border:1px solid #475569; background:#0f172a; color:#f1f5f9; font-size:1rem;
+}
+.wifi-pw button {
+  padding:8px 12px; background:#334155; border:1px solid #475569;
+  border-radius:4px; color:#cbd5e1; font-size:.85rem; cursor:pointer;
+}
+.wifi-pw button:hover { background:#475569; }
+#wifi-err {
+  display:none; background:#2a0000; border:1px solid #f87171; border-radius:6px;
+  padding:10px 14px; margin-bottom:12px; font-size:.85rem; color:#fca5a5;
+}
+.wbtn {
+  padding:8px 18px; border:none; border-radius:6px;
+  background:#f97316; color:#fff; font-size:.9rem; cursor:pointer; font-weight:600;
+}
+.wbtn:hover { background:#ea6c0a; }
+.wbtn.sec { background:#334155; font-weight:400; margin-left:8px; }
+.wbtn.sec:hover { background:#475569; }
+#wifi-spin { display:none; color:#f97316; margin-top:10px; font-size:.85rem; }
+</style>
+<div id="wifi-st">Scanning networks…</div>
+<div id="wifi-err"></div>
+<ul id="wifi-nets"></ul>
+<div id="wifi-form">
+  <label>Password for: <strong id="wifi-net-name"></strong></label>
+  <div class="wifi-pw">
+    <input type="password" id="wifi-pw" placeholder="WiFi password" autocomplete="off"
+           onkeydown="if(event.key==='Enter') wConn()">
+    <button onclick="wTogglePw()">Show</button>
+  </div>
+  <button class="wbtn" onclick="wConn()">Connect</button>
+  <button class="wbtn sec" onclick="wCancel()">Cancel</button>
+</div>
+<div id="wifi-spin">Connecting, please wait…</div>
+<button class="wbtn sec" onclick="wScan()" style="margin-top:8px">↺ Refresh networks</button>
+<script>
+let wSsid=null, wAttempts=0;
+async function wScan(){
+  wSt('Scanning…'); wHideErr();
+  document.getElementById('wifi-nets').innerHTML='';
+  try{
+    const nets=await(await fetch('/api/wifi/scan')).json();
+    if(!nets.length){wSt('No networks found.','err');return;}
+    wSt('Select a network:');
+    const ul=document.getElementById('wifi-nets');
+    nets.forEach(n=>{
+      const li=document.createElement('li');
+      li.innerHTML='<span>'+wEsc(n.ssid)+'</span><span class="wifi-sig">'+n.signal+'%</span>';
+      li.onclick=()=>wSel(n.ssid,li);
+      ul.appendChild(li);
+    });
+  }catch(e){wSt('Scan failed: '+e,'err');}
+}
+function wSel(ssid,el){
+  document.querySelectorAll('#wifi-nets li').forEach(l=>l.classList.remove('wsel'));
+  el.classList.add('wsel');
+  wSsid=ssid;
+  document.getElementById('wifi-net-name').textContent=ssid;
+  document.getElementById('wifi-pw').value='';
+  wHideErr();
+  document.getElementById('wifi-form').style.display='block';
+  document.getElementById('wifi-pw').focus();
+}
+function wCancel(){document.getElementById('wifi-form').style.display='none';wSsid=null;wHideErr();}
+function wTogglePw(){
+  const pw=document.getElementById('wifi-pw');
+  const btn=event.target;
+  if(pw.type==='password'){pw.type='text';btn.textContent='Hide';}
+  else{pw.type='password';btn.textContent='Show';}
+}
+async function wConn(){
+  if(!wSsid)return;
+  const pw=document.getElementById('wifi-pw').value;
+  wHideErr();
+  document.getElementById('wifi-form').style.display='none';
+  document.getElementById('wifi-spin').style.display='block';
+  wSt('Connecting to '+wEsc(wSsid)+'…');
+  wAttempts=0;
+  try{
+    const r=await fetch('/api/wifi/connect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ssid:wSsid,password:pw})});
+    if(r.status===202){setTimeout(wPoll,3000);}
+    else{const d=await r.json();wShowErr('HTTP '+r.status+': '+(d.detail||'?'));document.getElementById('wifi-spin').style.display='none';document.getElementById('wifi-form').style.display='block';}
+  }catch(e){wShowErr(''+e);document.getElementById('wifi-spin').style.display='none';document.getElementById('wifi-form').style.display='block';}
+}
+async function wPoll(){
+  wAttempts++;
+  try{
+    const[wr,cr]=await Promise.all([fetch('/api/wifi/status'),fetch('/api/wifi/connect-result')]);
+    const wifi=await wr.json(),conn=await cr.json();
+    if(conn.status==='error'){document.getElementById('wifi-spin').style.display='none';wShowErr(conn.message);wSt('Connection failed.','err');document.getElementById('wifi-form').style.display='block';return;}
+    if(wifi.mode==='connected'){document.getElementById('wifi-spin').style.display='none';wSt('✓ Connected to: '+wifi.ssid,'ok');return;}
+    if(wAttempts>=30){document.getElementById('wifi-spin').style.display='none';wShowErr('Timed out.');wSt('Timed out.','err');document.getElementById('wifi-form').style.display='block';return;}
+    wSt('Connecting… ('+wAttempts+')');
+    setTimeout(wPoll,3000);
+  }catch(e){document.getElementById('wifi-spin').style.display='none';wSt('✓ Grabette switched to the new network.','ok');}
+}
+function wSt(msg,cls){const el=document.getElementById('wifi-st');el.textContent=msg;el.className=cls||'';}
+function wShowErr(msg){const el=document.getElementById('wifi-err');el.textContent=msg;el.style.display='block';}
+function wHideErr(){document.getElementById('wifi-err').style.display='none';}
+function wEsc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+wScan();
+</script>
+</div>
+"""
+
 
 def create_ui(api_url: str | None = None) -> gr.Blocks:
     client = GrabetteClient(base_url=api_url)
@@ -1040,24 +1169,15 @@ def create_ui(api_url: str | None = None) -> gr.Blocks:
         gr.Navbar(main_page_name="Episodes")
         gr.Markdown("# GRABETTE")
 
-        # ── WiFi ─────────────────────────────────────────────────────
-        gr.Markdown("## WiFi")
-        gr.HTML(
-            '<iframe src="/api/wifi/setup"'
-            ' style="width:100%;height:480px;border:none;border-radius:8px;"></iframe>'
-        )
+        with gr.Row(equal_height=False):
 
-        gr.HTML("<hr style='margin:1.5rem 0;border:none;border-top:1px solid #1e293b;'>")
-
-        # ── HuggingFace Account ───────────────────────────────────────
-        gr.Markdown("## HuggingFace Account")
-        with gr.Row():
+            # ── HuggingFace Account ───────────────────────────────────
             with gr.Column(scale=1):
+                gr.Markdown("## HuggingFace Account")
                 gr.Markdown("### Current status")
                 hf_account_status = gr.Textbox(
                     label=None, container=False, interactive=False,
                 )
-            with gr.Column(scale=1):
                 gr.Markdown("### Update Token")
                 new_token_input = gr.Textbox(
                     label=None, container=False,
@@ -1066,7 +1186,12 @@ def create_ui(api_url: str | None = None) -> gr.Blocks:
                 with gr.Row():
                     update_token_btn = gr.Button("Save token", variant="primary", size="sm")
                     remove_token_btn = gr.Button("Remove current token", variant="stop", size="sm")
-        account_msg = gr.Textbox(show_label=False, interactive=False, max_lines=1)
+                account_msg = gr.Textbox(show_label=False, interactive=False, max_lines=1)
+
+            # ── WiFi ─────────────────────────────────────────────────
+            with gr.Column(scale=1):
+                gr.Markdown("## WiFi")
+                gr.HTML(_WIFI_SETTINGS_HTML)
 
         update_token_btn.click(
             fn=on_hf_update_token, inputs=new_token_input,
