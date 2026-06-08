@@ -184,35 +184,35 @@ _WIFI_SETUP_HTML = """\
 <title>Grabette — WiFi Setup</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: #111827; color: #f1f5f9; font-family: sans-serif; padding: 20px; max-width: 480px; margin: auto; }
+  body { background: #ffffff; color: #111827; font-family: sans-serif; padding: 20px; max-width: 480px; margin: auto; }
   h1 { color: #f97316; font-size: 1.3rem; margin-bottom: 16px; }
-  #status { font-size: .85rem; color: #94a3b8; margin-bottom: 12px; min-height: 1.2em; }
-  #status.ok  { color: #4ade80; }
-  #status.err { color: #f87171; }
+  #status { font-size: .85rem; color: #64748b; margin-bottom: 12px; min-height: 1.2em; }
+  #status.ok  { color: #16a34a; }
+  #status.err { color: #dc2626; }
   #networks { list-style: none; margin-bottom: 16px; }
   #networks li {
     display: flex; justify-content: space-between; align-items: center;
     padding: 10px 12px; margin-bottom: 4px; border-radius: 6px;
-    background: #1e293b; cursor: pointer; border: 1px solid #334155;
+    background: #f8fafc; cursor: pointer; border: 1px solid #e2e8f0;
   }
-  #networks li:hover { background: #263548; border-color: #f97316; }
-  #networks li.selected { background: #2d1f0e; border-color: #f97316; }
+  #networks li:hover { background: #fff7ed; border-color: #f97316; }
+  #networks li.selected { background: #fff7ed; border-color: #f97316; }
   .signal { font-size: .75rem; color: #94a3b8; }
-  #form { display: none; background: #1e293b; border-radius: 8px; padding: 16px; margin-bottom: 12px; border: 1px solid #334155; }
+  #form { display: none; background: #f8fafc; border-radius: 8px; padding: 16px; margin-bottom: 12px; border: 1px solid #e2e8f0; }
   #form label { display: block; margin-bottom: 6px; color: #f97316; font-size: .9rem; }
   .pw-row { display: flex; gap: 8px; margin-bottom: 12px; }
   .pw-row input {
     flex: 1; padding: 8px 10px; border-radius: 4px;
-    border: 1px solid #475569; background: #0f172a; color: #f1f5f9; font-size: 1rem;
+    border: 1px solid #cbd5e1; background: #ffffff; color: #111827; font-size: 1rem;
   }
   .pw-row .toggle {
-    padding: 8px 14px; background: #334155; border: 1px solid #475569;
-    border-radius: 4px; color: #cbd5e1; font-size: .85rem; cursor: pointer; white-space: nowrap;
+    padding: 8px 14px; background: #f1f5f9; border: 1px solid #cbd5e1;
+    border-radius: 4px; color: #475569; font-size: .85rem; cursor: pointer; white-space: nowrap;
   }
-  .pw-row .toggle:hover { background: #475569; }
+  .pw-row .toggle:hover { background: #e2e8f0; }
   #error-box {
-    display: none; background: #2a0000; border: 1px solid #f87171; border-radius: 6px;
-    padding: 10px 14px; margin-bottom: 12px; font-size: .85rem; color: #fca5a5;
+    display: none; background: #fef2f2; border: 1px solid #fca5a5; border-radius: 6px;
+    padding: 10px 14px; margin-bottom: 12px; font-size: .85rem; color: #dc2626;
     word-break: break-word;
   }
   button {
@@ -220,8 +220,9 @@ _WIFI_SETUP_HTML = """\
     background: #f97316; color: #fff; font-size: 1rem; cursor: pointer; font-weight: 600;
   }
   button:hover { background: #ea6c0a; }
-  button.secondary { background: #334155; font-weight: 400; margin-left: 8px; }
-  button.secondary:hover { background: #475569; }
+  button:active { background: #c2410c; transform: scale(0.97); }
+  button.secondary { background: #f1f5f9; color: #374151; font-weight: 400; margin-left: 8px; border: 1px solid #e2e8f0; }
+  button.secondary:hover { background: #e2e8f0; }
   #spinner { display: none; color: #f97316; margin-top: 10px; }
 </style>
 </head>
