@@ -197,13 +197,14 @@ PAGE_JS = """
         }
     };
 
-    new MutationObserver(() => {
+    function _wifiTrigger() {
         const s = document.getElementById('wifi-section');
-        if (s && !s.dataset.inited) {
-            s.dataset.inited = '1';
-            window.wScan();
-        }
-    }).observe(document.body, {childList: true, subtree: true});
+        if (s && !s.dataset.inited) { s.dataset.inited = '1'; window.wScan(); }
+    }
+    if (document.body) {
+        new MutationObserver(_wifiTrigger).observe(document.body, {childList: true, subtree: true});
+        _wifiTrigger();
+    }
 }
 """
 
@@ -279,7 +280,9 @@ _WIFI_SETTINGS_HTML = """
 .wbtn.sec:active { background:#1e293b; transform:scale(0.97); }
 #wifi-spin { display:none; color:#f97316; margin-top:10px; font-size:.85rem; }
 </style>
-<div id="wifi-st">Scanning networks…</div>
+<img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
+     onload="setTimeout(()=>window.wScan&&window.wScan(),100)" style="display:none" alt="">
+<div id="wifi-st">—</div>
 <div id="wifi-err"></div>
 <ul id="wifi-nets"></ul>
 <div id="wifi-form">
@@ -1266,5 +1269,9 @@ def create_ui(api_url: str | None = None) -> gr.Blocks:
         remove_token_btn.click(fn=on_hf_remove_token, outputs=hf_account_status)
 
         settings_demo.load(fn=check_hf_account, outputs=hf_account_status)
+        settings_demo.load(
+            fn=None,
+            js="() => setTimeout(() => window.wScan && window.wScan(), 200)",
+        )
 
     return demo
