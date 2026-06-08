@@ -514,6 +514,25 @@ def create_ui(api_url: str | None = None) -> gr.Blocks:
             gr.update(),
         )
 
+    # ── Battery warning popup ─────────────────────────────────────────
+
+    def check_battery_warning():
+        info = client.get_system_info()
+        if info and "battery_pct" in info and info["battery_pct"] <= 30:
+            pct = info["battery_pct"]
+            html = (
+                "<div style='position:fixed;bottom:24px;right:24px;z-index:9999;"
+                "background:#fef2f2;border:1px solid #fca5a5;border-radius:12px;"
+                "padding:16px 20px;max-width:260px;"
+                "box-shadow:0 4px 20px rgba(0,0,0,0.15);'>"
+                "<div style='font-weight:700;color:#dc2626;font-size:1rem;"
+                "margin-bottom:4px;'>Battery low</div>"
+                f"<div style='font-size:0.88rem;color:#7f1d1d;'>{pct} % — please charge soon.</div>"
+                "</div>"
+            )
+            return gr.update(visible=True, value=html)
+        return gr.update(visible=False)
+
     # ── System bar ────────────────────────────────────────────────────
 
     def get_system_bar():
@@ -828,7 +847,12 @@ def create_ui(api_url: str | None = None) -> gr.Blocks:
         capture_timer = gr.Timer(0.5)
         capture_timer.tick(fn=get_capture_status, outputs=capture_box)
 
+        batt_popup_ep = gr.HTML(visible=False)
+        batt_timer_ep = gr.Timer(60.0)
+        batt_timer_ep.tick(fn=check_battery_warning, outputs=batt_popup_ep)
+
         demo.load(fn=refresh_tasks, outputs=[task_list, task_header_md, capture_title, task_desc_md, episodes_title, episodes_table, move_target_dd])
+        demo.load(fn=check_battery_warning, outputs=batt_popup_ep)
 
     # ══════════════════════════════════════════════════════════════════
     # Page 2 — Datasets (HF auth popup + upload)
@@ -923,6 +947,11 @@ def create_ui(api_url: str | None = None) -> gr.Blocks:
         datasets_demo.load(fn=load_datasets_page, outputs=[ds_task_cbg, ds_namespace])
         datasets_demo.load(fn=check_hf_auth_on_load, outputs=ds_auth_modal)
 
+        batt_popup_ds = gr.HTML(visible=False)
+        batt_timer_ds = gr.Timer(60.0)
+        batt_timer_ds.tick(fn=check_battery_warning, outputs=batt_popup_ds)
+        datasets_demo.load(fn=check_battery_warning, outputs=batt_popup_ds)
+
     # ══════════════════════════════════════════════════════════════════
     # Page 3 — Live View
     # ══════════════════════════════════════════════════════════════════
@@ -1012,6 +1041,11 @@ def create_ui(api_url: str | None = None) -> gr.Blocks:
         dv_system_timer = gr.Timer(10)
         dv_system_timer.tick(fn=get_system_bar, outputs=dv_system_bar)
 
+        batt_popup_lv = gr.HTML(visible=False)
+        batt_timer_lv = gr.Timer(60.0)
+        batt_timer_lv.tick(fn=check_battery_warning, outputs=batt_popup_lv)
+        live_demo.load(fn=check_battery_warning, outputs=batt_popup_lv)
+
     # ══════════════════════════════════════════════════════════════════
     # Page 4 — Settings
     # ══════════════════════════════════════════════════════════════════
@@ -1051,5 +1085,10 @@ def create_ui(api_url: str | None = None) -> gr.Blocks:
         remove_token_btn.click(fn=on_hf_remove_token, outputs=hf_account_status)
 
         settings_demo.load(fn=check_hf_account, outputs=hf_account_status)
+
+        batt_popup_st = gr.HTML(visible=False)
+        batt_timer_st = gr.Timer(60.0)
+        batt_timer_st.tick(fn=check_battery_warning, outputs=batt_popup_st)
+        settings_demo.load(fn=check_battery_warning, outputs=batt_popup_st)
 
     return demo
