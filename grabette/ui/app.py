@@ -565,6 +565,42 @@ def create_ui(api_url: str | None = None) -> gr.Blocks:
             + "</div>"
         )
 
+    # ── WiFi ──────────────────────────────────────────────────────────
+
+    def get_wifi_status():
+        status = client.wifi_status()
+        mode = status.get("mode", "offline")
+        ssid = status.get("ssid") or ""
+        ip = status.get("ip") or ""
+        if mode == "connected":
+            return f"Connected to {ssid}  —  {ip}"
+        if mode == "hotspot":
+            return f"Hotspot active  —  {ip}"
+        return "Offline"
+
+    def on_wifi_scan():
+        networks = client.wifi_scan()
+        if not networks:
+            return gr.update(choices=[], value=None)
+        choices = [(f"{n['ssid']} ({n.get('signal', '?')}%)", n["ssid"]) for n in networks]
+        return gr.update(choices=choices, value=None)
+
+    def on_wifi_connect(ssid, password):
+        if not ssid:
+            return "Select a network first", gr.update(active=False)
+        result = client.wifi_connect(ssid, password)
+        if "error" in result:
+            return f"Error: {result['error']}", gr.update(active=False)
+        return "Connecting…", gr.update(active=True)
+
+    def poll_wifi_result():
+        result = client.wifi_connect_result()
+        status = result.get("status", "idle")
+        msg = result.get("message", "")
+        if status in ("ok", "error"):
+            return msg, gr.update(active=False)
+        return msg or "Connecting…", gr.update()
+
     # ── HuggingFace ───────────────────────────────────────────────────
 
     def _hf_status_text(result):
@@ -1033,14 +1069,36 @@ def create_ui(api_url: str | None = None) -> gr.Blocks:
         dv_system_timer.tick(fn=get_system_bar, outputs=dv_system_bar)
 
     # ══════════════════════════════════════════════════════════════════
-    # Page 4 — HF Account
+    # Page 4 — Settings
     # ══════════════════════════════════════════════════════════════════
 
-    with demo.route("HF Account") as hf_demo:
+    with demo.route("Settings") as settings_demo:
         gr.Navbar(main_page_name="Episodes")
         gr.Markdown("# GRABETTE")
-        gr.Markdown("## HuggingFace Account")
 
+        # ── WiFi ─────────────────────────────────────────────────────
+        gr.Markdown("## WiFi")
+        with gr.Row():
+            wifi_status_box = gr.Textbox(
+                label="Current status", interactive=False, scale=3,
+            )
+            wifi_refresh_btn = gr.Button("↺ Refresh", size="sm", scale=1)
+        wifi_scan_btn = gr.Button("Scan networks")
+        wifi_networks_dd = gr.Dropdown(
+            label="Available networks", choices=[], interactive=True,
+        )
+        with gr.Row():
+            wifi_pw_input = gr.Textbox(
+                label="Password", type="password", placeholder="WiFi password", scale=3,
+            )
+            wifi_connect_btn = gr.Button("Connect", variant="primary", scale=1)
+        wifi_connect_msg = gr.Textbox(show_label=False, interactive=False, max_lines=1)
+        wifi_connect_timer = gr.Timer(3.0, active=False)
+
+        gr.HTML("<hr style='margin:1.5rem 0;border:none;border-top:1px solid #1e293b;'>")
+
+        # ── HuggingFace Account ───────────────────────────────────────
+        gr.Markdown("## HuggingFace Account")
         with gr.Row():
             with gr.Column(scale=1):
                 gr.Markdown("### Current status")
@@ -1058,12 +1116,25 @@ def create_ui(api_url: str | None = None) -> gr.Blocks:
                     remove_token_btn = gr.Button("Remove current token", variant="stop", size="sm")
         account_msg = gr.Textbox(show_label=False, interactive=False, max_lines=1)
 
+        wifi_refresh_btn.click(fn=get_wifi_status, outputs=wifi_status_box)
+        wifi_scan_btn.click(fn=on_wifi_scan, outputs=wifi_networks_dd)
+        wifi_connect_btn.click(
+            fn=on_wifi_connect,
+            inputs=[wifi_networks_dd, wifi_pw_input],
+            outputs=[wifi_connect_msg, wifi_connect_timer],
+        )
+        wifi_connect_timer.tick(
+            fn=poll_wifi_result,
+            outputs=[wifi_connect_msg, wifi_connect_timer],
+        )
+
         update_token_btn.click(
             fn=on_hf_update_token, inputs=new_token_input,
             outputs=[hf_account_status, new_token_input],
         )
         remove_token_btn.click(fn=on_hf_remove_token, outputs=hf_account_status)
 
-        hf_demo.load(fn=check_hf_account, outputs=hf_account_status)
+        settings_demo.load(fn=get_wifi_status, outputs=wifi_status_box)
+        settings_demo.load(fn=check_hf_account, outputs=hf_account_status)
 
     return demo

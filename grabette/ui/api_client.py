@@ -366,6 +366,49 @@ class GrabetteClient:
         except Exception:
             return {"active": False, "episode_id": None, "time_ms": 0, "duration_ms": 0, "playing": False}
 
+    # -- WiFi --
+
+    def wifi_status(self) -> dict:
+        try:
+            r = self._http.get("/api/wifi/status", timeout=3.0)
+            r.raise_for_status()
+            return r.json()
+        except Exception:
+            return {"mode": "offline", "ssid": None, "ip": None}
+
+    def wifi_scan(self) -> list[dict]:
+        try:
+            r = self._http.get("/api/wifi/scan", timeout=15.0)
+            r.raise_for_status()
+            return r.json()
+        except Exception:
+            return []
+
+    def wifi_connect(self, ssid: str, password: str) -> dict:
+        try:
+            r = self._http.post(
+                "/api/wifi/connect",
+                json={"ssid": ssid, "password": password},
+                timeout=5.0,
+            )
+            if r.status_code == 202:
+                return {"status": "connecting"}
+            r.raise_for_status()
+            return r.json()
+        except httpx.HTTPStatusError as e:
+            return {"error": e.response.json().get("detail", str(e))}
+        except Exception as e:
+            return {"error": str(e)}
+
+    def wifi_connect_result(self) -> dict:
+        try:
+            r = self._http.get("/api/wifi/connect-result", timeout=2.0)
+            r.raise_for_status()
+            return r.json()
+        except Exception:
+            # Grabette unreachable likely means it switched networks (success)
+            return {"status": "ok", "message": "✓ Grabette switched to the new network"}
+
     # -- SLAM --
 
     def slam_run(self, episode_id: str, repo_id: str) -> dict:
