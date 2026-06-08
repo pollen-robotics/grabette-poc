@@ -12,17 +12,13 @@ router = APIRouter(prefix="/api/system", tags=["system"])
 
 
 def _pisugar_battery() -> float | None:
-    """Read battery percentage from the pisugar-server Unix socket."""
-    import socket as _sock
+    """Read battery percentage from PiSugar 3 via I2C (addr 0x57, reg 0x2A)."""
     try:
-        s = _sock.socket(_sock.AF_UNIX, _sock.SOCK_STREAM)
-        s.settimeout(1.0)
-        s.connect("/tmp/pisugar-server.sock")
-        s.sendall(b"get battery\n")
-        data = s.recv(128).decode().strip()
-        s.close()
-        # response format: "battery: 85.39999"
-        return round(float(data.split(":")[-1].strip()), 1)
+        import smbus2
+        bus = smbus2.SMBus(1)
+        pct = bus.read_byte_data(0x57, 0x2A)
+        bus.close()
+        return float(pct)
     except Exception:
         return None
 
