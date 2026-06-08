@@ -40,172 +40,80 @@ MODAL_CSS = """
 }
 """
 
-PAGE_JS = """
-() => {
-    const style = document.createElement('style');
-    style.textContent = `
-        .nav-holder {
-            background: #111827 !important;
-            border-bottom: 2px solid #f97316 !important;
-            padding: 0 1rem !important;
-        }
-        nav a {
-            color: #9ca3af !important;
-            font-weight: 600 !important;
-            font-size: 0.95rem !important;
-            padding: 12px 20px !important;
-            border-radius: 0 !important;
-            border: none !important;
-            border-bottom: 3px solid transparent !important;
-        }
-        nav a.active {
-            color: #ffffff !important;
-            background-color: transparent !important;
-            border-bottom: 3px solid #f97316 !important;
-        }
-        nav a:hover {
-            color: #e5e7eb !important;
-            background-color: rgba(255, 255, 255, 0.07) !important;
-        }
-        #tasks-col {
-            background: #1e293b !important;
-            border-radius: 8px !important;
-            padding: 8px !important;
-        }
-    `;
-    document.head.appendChild(style);
-
-    // ── WiFi section (Settings page) ─────────────────────────────
-    let wSsid = null, wAttempts = 0;
-
-    window.wSt = function(msg, cls) {
-        const el = document.getElementById('wifi-st');
-        if (!el) return;
-        el.textContent = msg;
-        el.className = cls || '';
-    };
-    window.wShowErr = function(msg) {
-        const el = document.getElementById('wifi-err');
-        if (!el) return;
-        el.textContent = msg;
-        el.style.display = 'block';
-    };
-    window.wHideErr = function() {
-        const el = document.getElementById('wifi-err');
-        if (el) el.style.display = 'none';
-    };
-    window.wEsc = function(s) {
-        return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    };
-    window.wScan = async function() {
-        window.wSt('Scanning…'); window.wHideErr();
-        const ul = document.getElementById('wifi-nets');
-        if (!ul) return;
-        ul.innerHTML = '';
-        try {
-            const nets = await (await fetch('/api/wifi/scan')).json();
-            if (!nets.length) { window.wSt('No networks found.', 'err'); return; }
-            window.wSt('Select a network:');
-            nets.forEach(n => {
-                const li = document.createElement('li');
-                li.innerHTML = '<span>' + window.wEsc(n.ssid) + '</span>'
-                             + '<span class="wifi-sig">' + n.signal + '%</span>';
-                li.onclick = () => window.wSel(n.ssid, li);
-                ul.appendChild(li);
-            });
-        } catch(e) { window.wSt('Scan failed: ' + e, 'err'); }
-    };
-    window.wSel = function(ssid, el) {
-        document.querySelectorAll('#wifi-nets li').forEach(l => l.classList.remove('wsel'));
-        el.classList.add('wsel');
-        wSsid = ssid;
-        document.getElementById('wifi-net-name').textContent = ssid;
-        document.getElementById('wifi-pw').value = '';
-        window.wHideErr();
-        document.getElementById('wifi-form').style.display = 'block';
-        document.getElementById('wifi-pw').focus();
-    };
-    window.wCancel = function() {
-        document.getElementById('wifi-form').style.display = 'none';
-        wSsid = null;
-        window.wHideErr();
-    };
-    window.wTogglePw = function(btn) {
-        const pw = document.getElementById('wifi-pw');
-        if (pw.type === 'password') { pw.type = 'text'; btn.textContent = 'Hide'; }
-        else { pw.type = 'password'; btn.textContent = 'Show'; }
-    };
-    window.wConn = async function() {
-        if (!wSsid) return;
-        const pw = document.getElementById('wifi-pw').value;
-        window.wHideErr();
-        document.getElementById('wifi-form').style.display = 'none';
-        document.getElementById('wifi-spin').style.display = 'block';
-        window.wSt('Connecting to ' + window.wEsc(wSsid) + '…');
-        wAttempts = 0;
-        try {
-            const r = await fetch('/api/wifi/connect', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ssid: wSsid, password: pw})
-            });
-            if (r.status === 202) { setTimeout(window.wPoll, 3000); }
-            else {
-                const d = await r.json();
-                window.wShowErr('HTTP ' + r.status + ': ' + (d.detail || '?'));
-                document.getElementById('wifi-spin').style.display = 'none';
-                document.getElementById('wifi-form').style.display = 'block';
-            }
-        } catch(e) {
-            window.wShowErr('' + e);
-            document.getElementById('wifi-spin').style.display = 'none';
-            document.getElementById('wifi-form').style.display = 'block';
-        }
-    };
-    window.wPoll = async function() {
-        wAttempts++;
-        try {
-            const [wr, cr] = await Promise.all([
-                fetch('/api/wifi/status'),
-                fetch('/api/wifi/connect-result')
-            ]);
-            const wifi = await wr.json(), conn = await cr.json();
-            if (conn.status === 'error') {
-                document.getElementById('wifi-spin').style.display = 'none';
-                window.wShowErr(conn.message);
-                window.wSt('Connection failed.', 'err');
-                document.getElementById('wifi-form').style.display = 'block';
-                return;
-            }
-            if (wifi.mode === 'connected') {
-                document.getElementById('wifi-spin').style.display = 'none';
-                window.wSt('✓ Connected to: ' + wifi.ssid, 'ok');
-                return;
-            }
-            if (wAttempts >= 30) {
-                document.getElementById('wifi-spin').style.display = 'none';
-                window.wShowErr('Timed out.');
-                window.wSt('Timed out.', 'err');
-                document.getElementById('wifi-form').style.display = 'block';
-                return;
-            }
-            window.wSt('Connecting… (' + wAttempts + ')');
-            setTimeout(window.wPoll, 3000);
-        } catch(e) {
-            document.getElementById('wifi-spin').style.display = 'none';
-            window.wSt('✓ Grabette switched to the new network.', 'ok');
-        }
-    };
-
-    function _wifiTrigger() {
-        const s = document.getElementById('wifi-section');
-        if (s && !s.dataset.inited) { s.dataset.inited = '1'; window.wScan(); }
-    }
-    if (document.body) {
-        new MutationObserver(_wifiTrigger).observe(document.body, {childList: true, subtree: true});
-        _wifiTrigger();
-    }
+_HEAD_HTML = """
+<style>
+.nav-holder { background: #111827 !important; border-bottom: 2px solid #f97316 !important; padding: 0 1rem !important; }
+nav a { color: #9ca3af !important; font-weight: 600 !important; font-size: 0.95rem !important; padding: 12px 20px !important; border-radius: 0 !important; border: none !important; border-bottom: 3px solid transparent !important; }
+nav a.active { color: #ffffff !important; background-color: transparent !important; border-bottom: 3px solid #f97316 !important; }
+nav a:hover { color: #e5e7eb !important; background-color: rgba(255,255,255,0.07) !important; }
+#tasks-col { background: #1e293b !important; border-radius: 8px !important; padding: 8px !important; }
+</style>
+<script>
+var _wSsid = null, _wAttempts = 0;
+function wSt(msg, cls) { var el = document.getElementById('wifi-st'); if (!el) return; el.textContent = msg; el.className = cls || ''; }
+function wShowErr(msg) { var el = document.getElementById('wifi-err'); if (!el) return; el.textContent = msg; el.style.display = 'block'; }
+function wHideErr() { var el = document.getElementById('wifi-err'); if (el) el.style.display = 'none'; }
+function wEsc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+async function wScan() {
+    wSt('Scanning…'); wHideErr();
+    var ul = document.getElementById('wifi-nets');
+    if (!ul) return;
+    ul.innerHTML = '';
+    try {
+        var nets = await (await fetch('/api/wifi/scan')).json();
+        if (!nets.length) { wSt('No networks found.', 'err'); return; }
+        wSt('Select a network:');
+        nets.forEach(function(n) {
+            var li = document.createElement('li');
+            li.innerHTML = '<span>' + wEsc(n.ssid) + '</span><span class="wifi-sig">' + n.signal + '%</span>';
+            li.onclick = function() { wSel(n.ssid, li); };
+            ul.appendChild(li);
+        });
+    } catch(e) { wSt('Scan failed: ' + e, 'err'); }
 }
+function wSel(ssid, el) {
+    document.querySelectorAll('#wifi-nets li').forEach(function(l) { l.classList.remove('wsel'); });
+    el.classList.add('wsel');
+    _wSsid = ssid;
+    document.getElementById('wifi-net-name').textContent = ssid;
+    document.getElementById('wifi-pw').value = '';
+    wHideErr();
+    document.getElementById('wifi-form').style.display = 'block';
+    document.getElementById('wifi-pw').focus();
+}
+function wCancel() { document.getElementById('wifi-form').style.display = 'none'; _wSsid = null; wHideErr(); }
+function wTogglePw(btn) { var pw = document.getElementById('wifi-pw'); if (pw.type === 'password') { pw.type = 'text'; btn.textContent = 'Hide'; } else { pw.type = 'password'; btn.textContent = 'Show'; } }
+async function wConn() {
+    if (!_wSsid) return;
+    var pw = document.getElementById('wifi-pw').value;
+    wHideErr();
+    document.getElementById('wifi-form').style.display = 'none';
+    document.getElementById('wifi-spin').style.display = 'block';
+    wSt('Connecting to ' + wEsc(_wSsid) + '…');
+    _wAttempts = 0;
+    try {
+        var r = await fetch('/api/wifi/connect', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ssid: _wSsid, password: pw}) });
+        if (r.status === 202) { setTimeout(wPoll, 3000); }
+        else { var d = await r.json(); wShowErr('HTTP ' + r.status + ': ' + (d.detail || '?')); document.getElementById('wifi-spin').style.display = 'none'; document.getElementById('wifi-form').style.display = 'block'; }
+    } catch(e) { wShowErr('' + e); document.getElementById('wifi-spin').style.display = 'none'; document.getElementById('wifi-form').style.display = 'block'; }
+}
+async function wPoll() {
+    _wAttempts++;
+    try {
+        var results = await Promise.all([fetch('/api/wifi/status'), fetch('/api/wifi/connect-result')]);
+        var wifi = await results[0].json(), conn = await results[1].json();
+        if (conn.status === 'error') { document.getElementById('wifi-spin').style.display = 'none'; wShowErr(conn.message); wSt('Connection failed.', 'err'); document.getElementById('wifi-form').style.display = 'block'; return; }
+        if (wifi.mode === 'connected') { document.getElementById('wifi-spin').style.display = 'none'; wSt('✓ Connected to: ' + wifi.ssid, 'ok'); return; }
+        if (_wAttempts >= 30) { document.getElementById('wifi-spin').style.display = 'none'; wShowErr('Timed out.'); wSt('Timed out.', 'err'); document.getElementById('wifi-form').style.display = 'block'; return; }
+        wSt('Connecting… (' + _wAttempts + ')');
+        setTimeout(wPoll, 3000);
+    } catch(e) { document.getElementById('wifi-spin').style.display = 'none'; wSt('✓ Grabette switched to the new network.', 'ok'); }
+}
+new MutationObserver(function() {
+    var s = document.getElementById('wifi-section');
+    if (s && !s.dataset.inited) { s.dataset.inited = '1'; wScan(); }
+}).observe(document.documentElement, {childList: true, subtree: true});
+</script>
 """
 
 _IMU_IFRAME_HTML = (
@@ -850,7 +758,7 @@ def create_ui(api_url: str | None = None) -> gr.Blocks:
     # Page 1 — Episodes
     # ══════════════════════════════════════════════════════════════════
 
-    with gr.Blocks(title="Grabette", css=MODAL_CSS, js=PAGE_JS) as demo:
+    with gr.Blocks(title="Grabette", css=MODAL_CSS, head=_HEAD_HTML) as demo:
         gr.Navbar(main_page_name="Episodes")
         gr.Markdown("# GRABETTE")
 
@@ -1269,9 +1177,5 @@ def create_ui(api_url: str | None = None) -> gr.Blocks:
         remove_token_btn.click(fn=on_hf_remove_token, outputs=hf_account_status)
 
         settings_demo.load(fn=check_hf_account, outputs=hf_account_status)
-        settings_demo.load(
-            fn=None,
-            js="() => setTimeout(() => window.wScan && window.wScan(), 200)",
-        )
 
     return demo
