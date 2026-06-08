@@ -522,6 +522,7 @@ def create_ui(api_url: str | None = None) -> gr.Blocks:
             return "<p style='color:#64748b;font-size:0.85rem;margin:0.75rem 0;'>System disconnected</p>"
         cards = [
             ("Host", info.get("hostname", "?")),
+            ("Battery", f"{info['battery_pct']} %" if "battery_pct" in info else None),
             ("CPU temp", f"{info['cpu_temp_c']} °C" if "cpu_temp_c" in info else None),
             ("Disk free", f"{info['disk_free_gb']} GB" if "disk_free_gb" in info else None),
             ("IP", info.get("ip")),

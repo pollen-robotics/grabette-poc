@@ -11,6 +11,22 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 router = APIRouter(prefix="/api/system", tags=["system"])
 
 
+def _pisugar_battery() -> float | None:
+    """Read battery percentage from the pisugar-server Unix socket."""
+    import socket as _sock
+    try:
+        s = _sock.socket(_sock.AF_UNIX, _sock.SOCK_STREAM)
+        s.settimeout(1.0)
+        s.connect("/tmp/pisugar-server.sock")
+        s.sendall(b"get battery\n")
+        data = s.recv(128).decode().strip()
+        s.close()
+        # response format: "battery: 85.39999"
+        return round(float(data.split(":")[-1].strip()), 1)
+    except Exception:
+        return None
+
+
 @router.get("/info")
 def system_info():
     info = {
@@ -44,6 +60,11 @@ def system_info():
         info["cpu_temp_c"] = round(int(temp) / 1000, 1)
     except Exception:
         pass
+
+    # PiSugar battery
+    battery = _pisugar_battery()
+    if battery is not None:
+        info["battery_pct"] = battery
 
     return info
 
