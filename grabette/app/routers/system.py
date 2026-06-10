@@ -11,6 +11,18 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 router = APIRouter(prefix="/api/system", tags=["system"])
 
 
+def _pisugar_battery() -> float | None:
+    """Read battery percentage from PiSugar 3 via I2C (addr 0x57, reg 0x2A)."""
+    try:
+        import smbus2
+        bus = smbus2.SMBus(1)
+        pct = bus.read_byte_data(0x57, 0x2A)
+        bus.close()
+        return float(pct)
+    except Exception:
+        return None
+
+
 @router.get("/info")
 def system_info():
     info = {
@@ -44,6 +56,11 @@ def system_info():
         info["cpu_temp_c"] = round(int(temp) / 1000, 1)
     except Exception:
         pass
+
+    # PiSugar battery
+    battery = _pisugar_battery()
+    if battery is not None:
+        info["battery_pct"] = battery
 
     return info
 
