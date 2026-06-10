@@ -45,7 +45,17 @@ def get_network_mode() -> str:
 
 def get_current_ssid() -> str | None:
     """Return the SSID of the current WiFi connection, or None."""
-    result = _run(["nmcli", "-t", "-f", "active,ssid", "dev", "wifi"])
+    # Primary: read from the active connection profile (reliable, no scan needed)
+    conn = get_active_wifi_connection()
+    if conn and conn != HOTSPOT_CONN_NAME:
+        result = _run(["nmcli", "--escape", "no", "-g", "802-11-wireless.ssid",
+                       "connection", "show", conn])
+        ssid = result.stdout.strip()
+        if ssid:
+            return ssid
+
+    # Fallback: scan-based approach
+    result = _run(["nmcli", "--escape", "no", "-t", "-f", "active,ssid", "dev", "wifi"])
     for line in result.stdout.splitlines():
         if line.startswith("yes:"):
             return line[4:] or None
