@@ -517,7 +517,12 @@ def create_ui(api_url: str | None = None) -> gr.Blocks:
     # ── Battery warning popup ─────────────────────────────────────────
 
     def check_battery_warning():
-        info = client.get_system_info()
+        return _battery_popup_html(client.get_system_info())
+
+    # ── System bar ────────────────────────────────────────────────────
+
+    def _battery_popup_html(info: dict | None):
+        """Return (visible, html) for the battery popup from a system info dict."""
         if info and "battery_pct" in info and info["battery_pct"] <= 30:
             pct = info["battery_pct"]
             html = (
@@ -533,12 +538,12 @@ def create_ui(api_url: str | None = None) -> gr.Blocks:
             return gr.update(visible=True, value=html)
         return gr.update(visible=False)
 
-    # ── System bar ────────────────────────────────────────────────────
-
     def get_system_bar():
+        """Returns (system_bar_html, battery_popup_update) from a single API call."""
         info = client.get_system_info()
         if info is None:
-            return "<p style='color:#64748b;font-size:0.85rem;margin:0.75rem 0;'>System disconnected</p>"
+            bar = "<p style='color:#64748b;font-size:0.85rem;margin:0.75rem 0;'>System disconnected</p>"
+            return bar, gr.update(visible=False)
         cards = [
             ("Host", info.get("hostname", "?")),
             ("Battery", f"{info['battery_pct']} %" if "battery_pct" in info else None),
@@ -558,11 +563,12 @@ def create_ui(api_url: str | None = None) -> gr.Blocks:
                 f"<div style='font-size:0.95rem;font-weight:600;color:#f1f5f9;'>{value}</div>"
                 f"</div>"
             )
-        return (
+        bar = (
             "<div style='display:flex;flex-direction:column;gap:0.5rem;height:100%;'>"
             + "".join(parts)
             + "</div>"
         )
+        return bar, _battery_popup_html(info)
 
     # ── HuggingFace ───────────────────────────────────────────────────
 
@@ -1038,13 +1044,11 @@ def create_ui(api_url: str | None = None) -> gr.Blocks:
                      imu_iframe, angle_iframe],
         )
 
-        dv_system_timer = gr.Timer(10)
-        dv_system_timer.tick(fn=get_system_bar, outputs=dv_system_bar)
-
         batt_popup_lv = gr.HTML(visible=False)
-        batt_timer_lv = gr.Timer(60.0)
-        batt_timer_lv.tick(fn=check_battery_warning, outputs=batt_popup_lv)
-        live_demo.load(fn=check_battery_warning, outputs=batt_popup_lv)
+
+        dv_system_timer = gr.Timer(10)
+        dv_system_timer.tick(fn=get_system_bar, outputs=[dv_system_bar, batt_popup_lv])
+        live_demo.load(fn=get_system_bar, outputs=[dv_system_bar, batt_popup_lv])
 
     # ══════════════════════════════════════════════════════════════════
     # Page 4 — Settings
