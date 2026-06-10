@@ -366,6 +366,16 @@ class GrabetteClient:
         except Exception:
             return {"active": False, "episode_id": None, "time_ms": 0, "duration_ms": 0, "playing": False}
 
+    # -- WiFi --
+
+    def wifi_status(self) -> dict:
+        try:
+            r = self._http.get("/api/wifi/status", timeout=3.0)
+            r.raise_for_status()
+            return r.json()
+        except Exception:
+            return {"mode": "offline", "ssid": None, "ip": None}
+
     # -- SLAM --
 
     def slam_run(self, episode_id: str, repo_id: str) -> dict:

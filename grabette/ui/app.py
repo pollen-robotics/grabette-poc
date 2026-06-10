@@ -103,20 +103,20 @@ def create_ui(api_url: str | None = None) -> gr.Blocks:
     # ── Sensor state (Live Streaming page) ────────────────────────────
 
     def get_sensor_state():
+        """Returns (gyro_text, accel_text, angle_text)."""
         state = client.get_state()
         if state is None:
-            return "## IMU Live\n*Disconnected*", "## Angle Sensors\n*Disconnected*"
+            return "*Disconnected*", "*Disconnected*", "*Disconnected*"
 
         imu = state.get("imu")
         if imu:
             a = imu["accel"]
             g = imu["gyro"]
-            imu_text = (
-                f"`Accel: [{a[0]:+8.3f}, {a[1]:+8.3f}, {a[2]:+8.3f}] m/s²`\n\n"
-                f"`Gyro:  [{g[0]:+8.4f}, {g[1]:+8.4f}, {g[2]:+8.4f}] rad/s`"
-            )
+            gyro_text = f"`X: {g[0]:+8.4f}  Y: {g[1]:+8.4f}  Z: {g[2]:+8.4f}  rad/s`"
+            accel_text = f"`X: {a[0]:+8.3f}  Y: {a[1]:+8.3f}  Z: {a[2]:+8.3f}  m/s²`"
         else:
-            imu_text = "*No IMU data*"
+            gyro_text = "*No IMU data*"
+            accel_text = "*No IMU data*"
 
         angle = state.get("angle")
         if angle:
@@ -127,9 +127,9 @@ def create_ui(api_url: str | None = None) -> gr.Blocks:
                 f"`Distal:   {d_deg:+7.2f}°  ({angle['distal']:+.4f} rad)`"
             )
         else:
-            angle_text = "## Angle Sensors\n*No angle data*"
+            angle_text = "*No data*"
 
-        return imu_text, angle_text
+        return gyro_text, accel_text, angle_text
 
     # ── Capture (Datasets page) ───────────────────────────────────────
 
@@ -542,33 +542,69 @@ def create_ui(api_url: str | None = None) -> gr.Blocks:
         """Returns (system_bar_html, battery_popup_update) from a single API call."""
         info = client.get_system_info()
         if info is None:
-            bar = "<p style='color:#64748b;font-size:0.85rem;margin:0.75rem 0;'>System disconnected</p>"
+            bar = "<p style='color:#64748b;font-size:0.85rem;margin:0.5rem 0;'>System disconnected</p>"
             return bar, gr.update(visible=False)
-        cards = [
-            ("Host", info.get("hostname", "?")),
-            ("Battery", f"{info['battery_pct']} %" if "battery_pct" in info else None),
-            ("CPU temp", f"{info['cpu_temp_c']} °C" if "cpu_temp_c" in info else None),
-            ("Disk free", f"{info['disk_free_gb']} GB" if "disk_free_gb" in info else None),
-            ("IP", info.get("ip")),
-        ]
-        parts = []
-        for label, value in cards:
-            if not value:
-                continue
-            parts.append(
-                f"<div style='background:#1e293b;border-radius:8px;padding:0.6rem 0.9rem;"
-                f"border:1px solid #334155;'>"
-                f"<div style='font-size:0.7rem;text-transform:uppercase;letter-spacing:0.08em;"
-                f"color:#94a3b8;margin-bottom:0.25rem;'>{label}</div>"
-                f"<div style='font-size:0.95rem;font-weight:600;color:#f1f5f9;'>{value}</div>"
+
+        def _card(label, value, extra_style=""):
+            return (
+                f"<div style='background:#1e293b;border-radius:8px;padding:0.55rem 1rem;"
+                f"border:1px solid #334155;flex:1;min-width:0;{extra_style}'>"
+                f"<div style='font-size:0.65rem;text-transform:uppercase;letter-spacing:0.09em;"
+                f"color:#94a3b8;margin-bottom:0.2rem;'>{label}</div>"
+                f"<div style='font-size:0.9rem;font-weight:600;color:#f1f5f9;white-space:nowrap;"
+                f"overflow:hidden;text-overflow:ellipsis;'>{value}</div>"
                 f"</div>"
             )
+
+        parts = []
+
+        if info.get("hostname"):
+            parts.append(_card("Host", info["hostname"]))
+        if "cpu_temp_c" in info:
+            parts.append(_card("CPU Temp", f"{info['cpu_temp_c']} °C"))
+        if "disk_free_gb" in info:
+            parts.append(_card("Disk Free", f"{info['disk_free_gb']} GB"))
+
+        if "battery_pct" in info:
+            pct = info["battery_pct"]
+            if pct > 60:
+                batt_color = "#22c55e"
+                batt_border = "#166534"
+            elif pct > 20:
+                batt_color = "#f97316"
+                batt_border = "#9a3412"
+            else:
+                batt_color = "#ef4444"
+                batt_border = "#991b1b"
+            parts.append(
+                f"<div style='background:#1e293b;border-radius:8px;padding:0.55rem 1rem;"
+                f"border:2px solid {batt_border};flex:1;min-width:0;'>"
+                f"<div style='font-size:0.65rem;text-transform:uppercase;letter-spacing:0.09em;"
+                f"color:#94a3b8;margin-bottom:0.2rem;'>Battery</div>"
+                f"<div style='font-size:0.9rem;font-weight:700;color:{batt_color};'>{pct} %</div>"
+                f"</div>"
+            )
+
         bar = (
-            "<div style='display:flex;flex-direction:column;gap:0.5rem;height:100%;'>"
+            "<div style='display:flex;flex-direction:row;gap:0.5rem;flex-wrap:wrap;'>"
             + "".join(parts)
             + "</div>"
         )
         return bar, _battery_popup_html(info)
+
+    # ── WiFi network info (Settings page) ────────────────────────────
+
+    def get_wifi_network_info():
+        status = client.wifi_status()
+        info = client.get_system_info() or {}
+        hostname = info.get("hostname", "—")
+        ssid = status.get("ssid") or "—"
+        ip = status.get("ip") or info.get("ip") or "—"
+        return (
+            f"**Hostname:** {hostname}  \n"
+            f"**Current network:** {ssid}  \n"
+            f"**IP address:** {ip}"
+        )
 
     # ── HuggingFace ───────────────────────────────────────────────────
 
@@ -978,50 +1014,63 @@ def create_ui(api_url: str | None = None) -> gr.Blocks:
         gr.Navbar(main_page_name="Episodes")
         gr.Markdown("# GRABETTE")
 
-        # ── Camera | 3D viewer | System cards ────────────────────────
+        # ── System bar (full width) ────────────────────────────────────
+        dv_system_bar = gr.HTML()
+
+        gr.HTML("<hr style='margin:0.75rem 0;border:none;border-top:1px solid #1e293b;'>")
+
+        # ── Camera | Depth | 3D viewer ────────────────────────────────
         with gr.Row(equal_height=True):
-            with gr.Column(scale=2):
+            with gr.Column(scale=1):
                 gr.HTML("<div style='font-size:0.72rem;text-transform:uppercase;"
                         "letter-spacing:0.09em;color:#94a3b8;margin-bottom:0.3rem;'>"
                         "Camera</div>")
                 camera_img = gr.Image(
-                    label=None, show_label=False, height="30vh", container=False,
+                    label=None, show_label=False, height="28vh", container=False,
                 )
+            with gr.Column(scale=1):
                 gr.HTML("<div style='font-size:0.72rem;text-transform:uppercase;"
-                        "letter-spacing:0.09em;color:#94a3b8;margin:0.5rem 0 0.3rem;'>"
+                        "letter-spacing:0.09em;color:#94a3b8;margin-bottom:0.3rem;'>"
                         "Depth (OAK-D)</div>")
                 depth_img = gr.Image(
-                    label=None, show_label=False, height="25vh", container=False,
+                    label=None, show_label=False, height="28vh", container=False,
                 )
                 oakd_btn = gr.Button("OAK-D: OFF  — click to enable", size="sm")
-            with gr.Column(scale=2):
+            with gr.Column(scale=1):
                 gr.HTML("<div style='font-size:0.72rem;text-transform:uppercase;"
                         "letter-spacing:0.09em;color:#94a3b8;margin-bottom:0.3rem;'>"
                         "3D Model</div>")
                 gr.HTML(
                     '<iframe id="urdf-viewer" src="/viewer" '
-                    'style="width:100%;height:30vh;border:none;'
+                    'style="width:100%;height:28vh;border:none;'
                     'border-radius:8px;background:#1a1a2e;"></iframe>'
                 )
-            with gr.Column(scale=1):
-                gr.HTML("<div style='font-size:0.72rem;text-transform:uppercase;"
-                        "letter-spacing:0.09em;color:#94a3b8;margin-bottom:0.3rem;'>"
-                        "System</div>")
-                dv_system_bar = gr.HTML()
-                teleop_btn = gr.Button("Enter Teleop Mode", variant="secondary")
-                teleop_msg = gr.Textbox(
-                    show_label=False, interactive=False, max_lines=1,
-                )
 
-        # ── Sensor charts ─────────────────────────────────────────────
-        gr.HTML("<hr style='margin:1.25rem 0;border:none;border-top:1px solid #1e293b;'>")
+        gr.HTML("<hr style='margin:0.75rem 0;border:none;border-top:1px solid #1e293b;'>")
+
+        # ── IMU (gyro) | Accelerometer | Angle sensors ────────────────
         with gr.Row():
-            with gr.Column(scale=3):
-                imu_box = gr.Markdown("## IMU Live")
+            with gr.Column(scale=1):
+                gr.Markdown("### IMU")
+                gyro_box = gr.Markdown("*—*")
                 imu_iframe = gr.HTML(value=_IMU_IFRAME_HTML)
-            with gr.Column(scale=2):
-                angle_box = gr.Markdown("## Angle Sensors")
+            with gr.Column(scale=1):
+                gr.Markdown("### Accelerometer")
+                accel_box = gr.Markdown("*—*")
+            with gr.Column(scale=1):
+                gr.Markdown("### Angle Sensors")
+                angle_box = gr.Markdown("*—*")
                 angle_iframe = gr.HTML(value=_ANGLE_IFRAME_HTML)
+
+        gr.HTML("<hr style='margin:0.75rem 0;border:none;border-top:1px solid #1e293b;'>")
+
+        # ── Teleop ────────────────────────────────────────────────────
+        gr.Markdown("### Teleop")
+        with gr.Row():
+            teleop_btn = gr.Button("Enter Teleop Mode", variant="secondary", scale=1)
+            teleop_msg = gr.Textbox(
+                show_label=False, interactive=False, max_lines=1, scale=3,
+            )
 
         camera_timer = gr.Timer(0.2)
         camera_timer.tick(fn=get_camera_frame, outputs=camera_img)
@@ -1030,25 +1079,16 @@ def create_ui(api_url: str | None = None) -> gr.Blocks:
         depth_timer.tick(fn=get_depth_frame, outputs=depth_img)
 
         sensor_timer = gr.Timer(0.5)
-        sensor_timer.tick(fn=get_sensor_state, outputs=[imu_box, angle_box])
+        sensor_timer.tick(fn=get_sensor_state, outputs=[gyro_box, accel_box, angle_box])
 
-        # Teleop status polled at 1 Hz on its own timer — kept off the
-        # main sensor_timer to avoid HTTP backpressure that caused Markdown
-        # flicker and WS-stream bursting in earlier revisions.
         teleop_timer = gr.Timer(1.0)
         teleop_timer.tick(fn=get_teleop_display, outputs=teleop_msg)
 
-        # OAK-D toggle — slow poll (3 s) since the user is the only thing
-        # that flips it, except for the auto-on-at-record path which also
-        # only needs O(seconds) responsiveness.
         oakd_timer = gr.Timer(3.0)
         oakd_timer.tick(fn=poll_oakd, outputs=oakd_btn)
         oakd_btn.click(fn=on_toggle_oakd, outputs=oakd_btn)
         live_demo.load(fn=poll_oakd, outputs=oakd_btn)
 
-        # Teleop mode toggle (wired here so the timer references resolve).
-        # When teleop is ON: the live-view timers are paused so uvicorn
-        # has headroom for the WS stream.
         teleop_btn.click(
             fn=on_toggle_teleop,
             outputs=[teleop_msg, teleop_btn,
@@ -1092,6 +1132,7 @@ def create_ui(api_url: str | None = None) -> gr.Blocks:
             # ── WiFi ─────────────────────────────────────────────────
             with gr.Column(scale=1):
                 gr.Markdown("## WiFi")
+                wifi_network_info = gr.Markdown("*Loading…*")
                 gr.HTML(_WIFI_SETTINGS_HTML)
 
         update_token_btn.click(
@@ -1101,6 +1142,7 @@ def create_ui(api_url: str | None = None) -> gr.Blocks:
         remove_token_btn.click(fn=on_hf_remove_token, outputs=hf_account_status)
 
         settings_demo.load(fn=check_hf_account, outputs=hf_account_status)
+        settings_demo.load(fn=get_wifi_network_info, outputs=wifi_network_info)
 
         batt_popup_st = gr.HTML(visible=False)
         batt_timer_st = gr.Timer(60.0)
