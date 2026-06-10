@@ -11,16 +11,32 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 router = APIRouter(prefix="/api/system", tags=["system"])
 
 
+_battery_ema: float | None = None
+
+
 def _pisugar_battery() -> float | None:
-    """Read battery percentage from PiSugar 3 via I2C (addr 0x57, reg 0x2A)."""
+    """Read battery percentage from PiSugar 3 via I2C (addr 0x57, reg 0x2A).
+
+    Takes the median of 3 rapid reads to discard I2C glitches, then applies
+    an EMA (α=0.2) to prevent the displayed percentage from bouncing up and
+    down due to fuel-gauge noise or transient load changes.
+    """
+    global _battery_ema
     try:
         import smbus2
         bus = smbus2.SMBus(1)
-        pct = bus.read_byte_data(0x57, 0x2A)
+        readings = sorted(bus.read_byte_data(0x57, 0x2A) for _ in range(3))
         bus.close()
-        return float(pct)
+        sample = float(readings[1])  # median of 3
     except Exception:
         return None
+
+    if _battery_ema is None:
+        _battery_ema = sample
+    else:
+        _battery_ema = 0.2 * sample + 0.8 * _battery_ema
+
+    return round(_battery_ema)
 
 
 @router.get("/info")
