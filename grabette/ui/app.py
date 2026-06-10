@@ -577,9 +577,19 @@ def create_ui(api_url: str | None = None) -> gr.Blocks:
             return f"Authenticated as {result.get('user', {}).get('username', '?')}"
         return "Not authenticated"
 
+    def _ds_upload_btn_update(authenticated: bool):
+        if authenticated:
+            return gr.update(value="Push to HuggingFace Hub", interactive=True, variant="huggingface")
+        return gr.update(
+            value="You need to be authenticated to push to HuggingFace Hub",
+            interactive=False,
+            variant="secondary",
+        )
+
     def check_hf_auth_on_load():
         result = client.hf_check_auth()
-        return gr.update(visible=not result.get("authenticated", False))
+        authenticated = result.get("authenticated", False)
+        return gr.update(visible=not authenticated), _ds_upload_btn_update(authenticated)
 
     def load_datasets_page():
         sessions = _get_sessions()
@@ -619,12 +629,13 @@ def create_ui(api_url: str | None = None) -> gr.Blocks:
 
     def on_modal_auth(token):
         if not token:
-            return gr.update(visible=True, value="Please enter a token"), gr.update()
+            return gr.update(visible=True, value="Please enter a token"), gr.update(), gr.update()
         result = client.hf_set_auth(token)
         if result.get("authenticated"):
-            return gr.update(visible=False), gr.update(visible=False)
+            return gr.update(visible=False), gr.update(visible=False), _ds_upload_btn_update(True)
         return (
             gr.update(visible=True, value=f"Auth failed: {result.get('error', 'unknown')}"),
+            gr.update(),
             gr.update(),
         )
 
@@ -932,8 +943,9 @@ def create_ui(api_url: str | None = None) -> gr.Blocks:
         # ── Upload ────────────────────────────────────────────────────
         gr.HTML("<div style='margin-top:1.5rem;max-width:260px;'>")
         ds_upload_btn = gr.Button(
-            "Push to HuggingFace Hub",
-            variant="huggingface",
+            "You need to be authenticated to push to HuggingFace Hub",
+            variant="secondary",
+            interactive=False,
         )
         gr.HTML("</div>")
         ds_upload_msg = gr.Textbox(
@@ -943,7 +955,7 @@ def create_ui(api_url: str | None = None) -> gr.Blocks:
 
         ds_modal_auth_btn.click(
             fn=on_modal_auth, inputs=ds_modal_token,
-            outputs=[ds_modal_msg, ds_auth_modal],
+            outputs=[ds_modal_msg, ds_auth_modal, ds_upload_btn],
         )
         ds_upload_btn.click(
             fn=on_ds_upload,
@@ -951,7 +963,7 @@ def create_ui(api_url: str | None = None) -> gr.Blocks:
             outputs=ds_upload_msg,
         )
         datasets_demo.load(fn=load_datasets_page, outputs=[ds_task_cbg, ds_namespace])
-        datasets_demo.load(fn=check_hf_auth_on_load, outputs=ds_auth_modal)
+        datasets_demo.load(fn=check_hf_auth_on_load, outputs=[ds_auth_modal, ds_upload_btn])
 
         batt_popup_ds = gr.HTML(visible=False)
         batt_timer_ds = gr.Timer(60.0)
